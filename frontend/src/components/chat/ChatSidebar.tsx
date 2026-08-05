@@ -4,8 +4,10 @@ import clsx from 'clsx'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { useChatStore } from '../../store/chatStore'
+import FileUpload from './FileUpload'
+import WatchlistPanel from './WatchlistPanel'
 
-export default function ChatSidebar() {
+export default function ChatSidebar({ watchlistRefreshKey }: { watchlistRefreshKey: number }) {
   const { sessions, activeSessionId, selectSession, newSession, rename, remove } = useChatStore()
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
@@ -90,6 +92,8 @@ export default function ChatSidebar() {
           </div>
         ))}
       </nav>
+      <WatchlistPanel refreshKey={watchlistRefreshKey} />
+      <FileUpload />
       <div className="border-t border-slate-200 p-3">
         <div className="flex items-center justify-between text-xs text-slate-500">
           <span className="truncate">{user?.name}</span>

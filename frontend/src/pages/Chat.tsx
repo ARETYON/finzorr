@@ -14,6 +14,7 @@ export default function Chat() {
     useChatStore()
   const [streaming, setStreaming] = useState(false)
   const [thinking, setThinking] = useState(false)
+  const [watchlistRefreshKey, setWatchlistRefreshKey] = useState(0)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -61,6 +62,7 @@ export default function Chat() {
             },
           ])
           void useChatStore.getState().loadSessions() // pick up auto-titles
+          setWatchlistRefreshKey((k) => k + 1) // reflect chat-driven watchlist edits
           break
         case 'stopped':
           setThinking(false)
@@ -92,7 +94,7 @@ export default function Chat() {
 
   return (
     <div className="flex h-full">
-      <ChatSidebar />
+      <ChatSidebar watchlistRefreshKey={watchlistRefreshKey} />
       <main className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-2.5">
           <h1 className="text-sm font-semibold text-slate-700">
