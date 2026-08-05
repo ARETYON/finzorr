@@ -21,6 +21,56 @@ _PING_TOOL = ToolDefinition(
 )
 
 
+@router.get("/route/{route_name}")
+async def run_route(route_name: str, q: str) -> dict[str, Any]:
+    """Run one specialist node standalone (no supervisor, no persistence)."""
+    from app.graph.state import AssistantState
+
+    nodes: dict[str, Any] = {}
+    from app.graph.nodes.general_chat import general_chat_node
+
+    nodes["general_chat"] = general_chat_node
+    from app.graph.nodes.tools import tools_node
+
+    nodes["tools"] = tools_node
+    try:
+        from app.graph.nodes.nl2sql import nl2sql_node
+
+        nodes["nl2sql"] = nl2sql_node
+    except ImportError:
+        pass
+    try:
+        from app.graph.nodes.rag import rag_node
+
+        nodes["rag"] = rag_node
+    except ImportError:
+        pass
+    try:
+        from app.graph.nodes.web_search import web_search_node
+
+        nodes["web_search"] = web_search_node
+    except ImportError:
+        pass
+    try:
+        from app.graph.nodes.memory import memory_node
+
+        nodes["memory"] = memory_node
+    except ImportError:
+        pass
+    node = nodes.get(route_name)
+    if node is None:
+        return {"error": f"unknown route '{route_name}'", "available": sorted(nodes)}
+    state: AssistantState = {
+        "session_id": "debug",
+        "user_id": "debug",
+        "user_name": "Dev",
+        "user_msg": q,
+        "messages": [],
+    }
+    result = await node(state)
+    return {k: v for k, v in result.items()}
+
+
 @router.get("/llm-ping")
 async def llm_ping() -> dict[str, Any]:
     """Exercise streaming + tool-calling against the active provider."""
