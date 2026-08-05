@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.logging import configure_logging, log
-from app.routers import auth, chat, chat_ws, health, market
+from app.routers import auth, chat, chat_ws, documents, health, market
 
 
 @asynccontextmanager
@@ -39,6 +39,7 @@ app.include_router(auth.router)
 app.include_router(chat.router)
 app.include_router(chat_ws.router)
 app.include_router(market.router)
+app.include_router(documents.router)
 
 if settings.is_dev:
     from app.routers import debug
