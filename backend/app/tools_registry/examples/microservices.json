@@ -1,0 +1,15 @@
+[
+  {
+    "name": "echo_service",
+    "description": "Worked example: echoes a message back from a local microservice (httpbin-style). Replace with your real internal APIs.",
+    "url": "http://localhost:8000/api/debug/echo",
+    "method": "GET",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "message": { "type": "string", "description": "Text to echo back" }
+      },
+      "required": ["message"]
+    }
+  }
+]

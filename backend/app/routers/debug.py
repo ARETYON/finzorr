@@ -21,6 +21,12 @@ _PING_TOOL = ToolDefinition(
 )
 
 
+@router.get("/echo")
+async def echo(message: str) -> dict[str, str]:
+    """Target for the worked-example microservice tool config."""
+    return {"echo": message}
+
+
 @router.get("/route/{route_name}")
 async def run_route(route_name: str, q: str) -> dict[str, Any]:
     """Run one specialist node standalone (no supervisor, no persistence)."""

@@ -12,14 +12,27 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.logging import configure_logging, log
-from app.routers import auth, chat, chat_ws, documents, health, market
+from app.routers import auth, chat, chat_ws, documents, health, market, watchlist
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    """Configure logging and log startup/shutdown."""
+    """Configure logging, register optional tool families, log lifecycle."""
     configure_logging()
     log.info("app.startup", env=settings.APP_ENV)
+    # Optional tool families — absence of keys/config is graceful, never fatal.
+    try:
+        from app.mcp_client.github_client import register_github_tools
+
+        await register_github_tools()
+    except Exception as exc:  # noqa: BLE001
+        log.warning("startup.github_tools_failed", error=str(exc))
+    try:
+        from app.tools_registry.local_microservice import register_microservice_tools
+
+        register_microservice_tools()
+    except Exception as exc:  # noqa: BLE001
+        log.warning("startup.microservice_tools_failed", error=str(exc))
     yield
     log.info("app.shutdown")
 
@@ -40,6 +53,7 @@ app.include_router(chat.router)
 app.include_router(chat_ws.router)
 app.include_router(market.router)
 app.include_router(documents.router)
+app.include_router(watchlist.router)
 
 if settings.is_dev:
     from app.routers import debug
