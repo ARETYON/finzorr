@@ -1,0 +1,65 @@
+"""NL2SQL route: screener questions over the fundamentals table."""
+
+from datetime import UTC, datetime
+
+from app.ai.base import SystemMessage, UserMessage
+from app.ai.completion import stream
+from app.core.logging import log
+from app.core.prompt_registry import render_agent_prompt
+from app.graph.callbacks import emit
+from app.graph.state import AssistantState
+from app.nl2sql.agent import rows_preview, run_query
+
+STALE_EMPTY_HINT = (
+    "The screener database appears to be empty — the daily fundamentals refresh "
+    "may not have run yet."
+)
+
+
+async def nl2sql_node(state: AssistantState) -> AssistantState:
+    """Guarded SQL screening; the executed SQL is surfaced as a citation."""
+    session_id = state["session_id"]
+    result = await run_query(state["user_msg"])
+    if not result.success:
+        log.warning("node.nl2sql.failed", error=result.error)
+        return {
+            "final_text": (
+                "I couldn't turn that into a valid screener query. "
+                "Try rephrasing — e.g. \"NSE stocks with P/E under 20 and dividend "
+                "yield above 2%\"."
+            ),
+            "route": "nl2sql",
+            "tool_calls": [{"name": "nl2sql", "arguments": {}, "result": result.error[:300]}],
+        }
+
+    assert result.result is not None
+    rows = rows_preview(result.result)
+
+    async def on_token(t: str) -> None:
+        await emit(session_id, {"type": "token", "delta": t})
+
+    try:
+        prompt = render_agent_prompt(
+            "nl2sql_answer",
+            question=state["user_msg"],
+            row_count=str(len(result.result.rows)),
+            rows=str(rows) if rows else f"[] ({STALE_EMPTY_HINT})",
+        )
+        done = await stream(
+            [SystemMessage(content="You are a precise data narrator."), UserMessage(content=prompt)],
+            on_token=on_token,
+            temperature=0.2,
+            max_tokens=1024,
+        )
+        narration = done.text
+    except Exception as exc:  # noqa: BLE001 — degrade to raw rows
+        log.error("node.nl2sql.narration_error", error=str(exc))
+        narration = f"Query returned {len(result.result.rows)} rows: {rows}"
+
+    return {
+        "final_text": narration,
+        "route": "nl2sql",
+        "citations": [{"marker": "SQL", "title": "Executed query", "snippet": result.sql}],
+        "data_as_of": datetime.now(UTC).isoformat(),
+        "sources": ["finzorr screener (daily refresh)"],
+    }
