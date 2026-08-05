@@ -35,3 +35,8 @@ app.add_middleware(
 )
 
 app.include_router(health.router)
+
+if settings.is_dev:
+    from app.routers import debug
+
+    app.include_router(debug.router)
