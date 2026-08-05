@@ -1,0 +1,41 @@
+# Local dev dependencies only — the API and frontend run natively.
+# Host ports are offset (+1/+2) to avoid colliding with other local stacks
+# (e.g. local-agent-platform already uses 6333/6379).
+# Embeddings use the host's native Ollama (http://localhost:11434) in dev.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: finzorr-postgres
+    environment:
+      POSTGRES_USER: finzorr
+      POSTGRES_PASSWORD: finzorr
+      POSTGRES_DB: finzorr
+    ports:
+      - "5433:5432"
+    volumes:
+      - finzorr_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finzorr"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: finzorr-redis
+    command: ["redis-server", "--save", "", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    ports:
+      - "6380:6379"
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: finzorr-qdrant
+    ports:
+      - "6335:6333"
+    volumes:
+      - finzorr_qdrant:/qdrant/storage
+
+volumes:
+  finzorr_pgdata:
+  finzorr_qdrant:

@@ -1,0 +1,34 @@
+# Environment files — never commit real secrets (public repo)
+.env
+.env.*
+!.env.example
+!frontend/.env.development
+!frontend/.env.production
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# Node
+node_modules/
+frontend/dist/
+
+# Local data / runtime artifacts
+backend/storage/
+*.sqlite3
+dump.rdb
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Word/doc build artifacts stay out of git (PROJECT_PLAN.md is the source)
+PROJECT_PLAN.docx
+~$*
