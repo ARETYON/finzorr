@@ -1,0 +1,35 @@
+name: ci-backend
+
+on:
+  push:
+    branches: [main, staging]
+    paths: ["backend/**", ".github/workflows/ci-backend.yml"]
+  pull_request:
+    paths: ["backend/**", ".github/workflows/ci-backend.yml"]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: uv sync --frozen
+      - name: Lint (ruff)
+        run: uv run ruff check app/ tests/
+      - name: Env-var parity (.env.example covers every Settings field)
+        run: |
+          uv run python - <<'EOF'
+          from app.core.config import Settings
+          example = open(".env.example").read()
+          missing = [f for f in Settings.model_fields if f"{f}=" not in example]
+          assert not missing, f".env.example is missing: {missing}"
+          print(f"parity OK ({len(Settings.model_fields)} vars)")
+          EOF
+      - name: Sanity tests (no live deps)
+        run: uv run pytest tests/ -q -m sanity

@@ -31,8 +31,9 @@ async def general_chat_node(state: AssistantState) -> AssistantState:
     async def on_token(t: str) -> None:
         await emit(session_id, {"type": "token", "delta": t})
 
+    user_name = state.get("user_name", "there")
     system = SystemMessage(
-        content=render_agent_prompt("general_chat_system", user_name=state.get("user_name", "there"))
+        content=render_agent_prompt("general_chat_system", user_name=user_name)
     )
     msgs: list[ChatMessage] = [system, *build_history(state.get("messages", []))]
     msgs.append(UserMessage(content=state["user_msg"]))

@@ -29,7 +29,9 @@ async def nl2sql_node(state: AssistantState) -> AssistantState:
                 "yield above 2%\"."
             ),
             "route": "nl2sql",
-            "tool_calls": [{"name": "nl2sql", "arguments": {}, "result": result.error[:300]}],
+            "tool_calls": [
+                {"name": "nl2sql", "arguments": {}, "result": result.error[:300]}
+            ],
         }
 
     assert result.result is not None
@@ -46,7 +48,10 @@ async def nl2sql_node(state: AssistantState) -> AssistantState:
             rows=str(rows) if rows else f"[] ({STALE_EMPTY_HINT})",
         )
         done = await stream(
-            [SystemMessage(content="You are a precise data narrator."), UserMessage(content=prompt)],
+            [
+                SystemMessage(content="You are a precise data narrator."),
+                UserMessage(content=prompt),
+            ],
             on_token=on_token,
             temperature=0.2,
             max_tokens=1024,

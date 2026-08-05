@@ -5,6 +5,7 @@ the checkpointer would try (and fail) to serialize them. Single-process only,
 matching the single-container deployment model.
 """
 
+import contextlib
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -30,7 +31,5 @@ async def emit(session_id: str, frame: dict[str, Any]) -> None:
     cb = _callbacks.get(session_id)
     if cb is None:
         return
-    try:
+    with contextlib.suppress(Exception):
         await cb(frame)
-    except Exception:  # noqa: BLE001
-        pass

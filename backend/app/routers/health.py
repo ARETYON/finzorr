@@ -35,5 +35,6 @@ async def readyz() -> dict[str, str]:
         checks["redis"] = "ok"
     except Exception as exc:  # noqa: BLE001
         checks["redis"] = f"error: {type(exc).__name__}"
-    checks["status"] = "ok" if all(v == "ok" for k, v in checks.items() if k != "status") else "degraded"
+    all_ok = all(v == "ok" for k, v in checks.items() if k != "status")
+    checks["status"] = "ok" if all_ok else "degraded"
     return checks

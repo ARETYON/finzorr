@@ -50,7 +50,7 @@ class Settings(BaseSettings):
 
     # --- Auth ---
     GOOGLE_CLIENT_ID: str = ""
-    SESSION_SECRET: str = "dev-only-change-me"
+    SESSION_SECRET: str = "dev-only-change-me"  # noqa: S105 — dev default, overridden per env
     SESSION_TTL_DAYS: int = 7
     DEV_FAKE_AUTH: bool = False  # only honored when APP_ENV == "dev"
     COOKIE_DOMAIN: str = ""  # ".finzorr.ai" in uat/prod; empty locally

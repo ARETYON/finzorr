@@ -14,9 +14,9 @@ from dataclasses import dataclass
 from typing import Any
 
 import sqlglot
-from sqlglot import exp
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlglot import exp
 
 from app.core.config import settings
 from app.nl2sql.schema import ALLOWED_TABLES

@@ -94,5 +94,9 @@ class MCPClient:
     async def call_tool(self, name: str, arguments: dict[str, Any]) -> str:
         result = await self._rpc("tools/call", {"name": name, "arguments": arguments})
         parts = result.get("content", [])
-        texts = [p.get("text", "") for p in parts if isinstance(p, dict) and p.get("type") == "text"]
+        texts = [
+            p.get("text", "")
+            for p in parts
+            if isinstance(p, dict) and p.get("type") == "text"
+        ]
         return "\n".join(t for t in texts if t) or json.dumps(result)[:2000]

@@ -15,6 +15,7 @@ before accept(); the session cookie is verified at handshake (close 4401).
 """
 
 import asyncio
+import contextlib
 import json
 import uuid
 from typing import Any
@@ -67,10 +68,8 @@ class _Connection:
         return self.turn_task is not None and not self.turn_task.done()
 
     async def send(self, frame: dict[str, Any]) -> None:
-        try:
+        with contextlib.suppress(Exception):  # socket may be gone mid-send
             await self.ws.send_json(frame)
-        except Exception:  # noqa: BLE001 — socket may be gone mid-send
-            pass
 
     async def start_turn(self, data: dict[str, Any]) -> None:
         if self.busy:

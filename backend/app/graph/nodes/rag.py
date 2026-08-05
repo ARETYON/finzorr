@@ -103,7 +103,10 @@ async def rag_node(state: AssistantState) -> AssistantState:
             "final_text": done.text,
             "route": "rag",
             "citations": _citations(hits),
-            "sources": ["finzorr glossary" if h.tenant == GLOSSARY_TENANT else "your documents" for h in hits[:1]],
+            "sources": [
+                "finzorr glossary" if h.tenant == GLOSSARY_TENANT else "your documents"
+                for h in hits[:1]
+            ],
         }
     except Exception as exc:  # noqa: BLE001
         log.error("node.rag.error", error=str(exc))
