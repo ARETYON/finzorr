@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.core.config import settings
+from app.core.errors import install_error_handlers
 from app.core.logging import configure_logging, log, new_correlation_id
 from app.routers import (
     attachments,
@@ -117,10 +118,12 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
         headers["Access-Control-Expose-Headers"] = "X-Request-ID"
     return JSONResponse(
         status_code=500,
-        content={"detail": "internal server error", "request_id": cid},
+        content={"detail": "internal server error", "code": "internal", "request_id": cid},
         headers=headers,
     )
 
+
+install_error_handlers(app)
 
 app.add_middleware(
     CORSMiddleware,

@@ -4,9 +4,11 @@ import axios from 'axios'
 // In uat/prod VITE_API_BASE_URL points at api(-uat).finzorr.ai and the session
 // cookie rides along thanks to withCredentials.
 export const API_BASE: string = import.meta.env.VITE_API_BASE_URL ?? ''
+// Canonical API version prefix; legacy /api stays server-side for compat.
+export const API_PREFIX = '/api/v1'
 
 export const api = axios.create({
-  baseURL: API_BASE,
+  baseURL: `${API_BASE}${API_PREFIX}`,
   withCredentials: true,
 })
 

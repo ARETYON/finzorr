@@ -7,31 +7,31 @@ export interface PersonaInfo {
 }
 
 export async function listPersonas(): Promise<PersonaInfo[]> {
-  const { data } = await api.get<PersonaInfo[]>('/api/personas')
+  const { data } = await api.get<PersonaInfo[]>('/personas')
   return data
 }
 
 export async function createPersona(name: string, systemPrompt: string): Promise<void> {
-  await api.post('/api/personas', { name, system_prompt: systemPrompt })
+  await api.post('/personas', { name, system_prompt: systemPrompt })
 }
 
 export async function deletePersona(id: string): Promise<void> {
-  await api.delete(`/api/personas/${id}`)
+  await api.delete(`/personas/${id}`)
 }
 
 export async function setSessionPersona(sessionId: string, personaId: string | null): Promise<void> {
-  await api.patch(`/api/chat/sessions/${sessionId}/persona`, { persona_id: personaId })
+  await api.patch(`/chat/sessions/${sessionId}/persona`, { persona_id: personaId })
 }
 
 export async function createShareLink(sessionId: string): Promise<string> {
   const { data } = await api.post<{ token: string; expires_at: string | null }>(
-    `/api/chat/sessions/${sessionId}/share`,
+    `/chat/sessions/${sessionId}/share`,
   )
   return data.token
 }
 
 export async function revokeShareLinks(sessionId: string): Promise<void> {
-  await api.delete(`/api/chat/sessions/${sessionId}/share`)
+  await api.delete(`/chat/sessions/${sessionId}/share`)
 }
 
 export interface SharedChat {
@@ -40,7 +40,7 @@ export interface SharedChat {
 }
 
 export async function fetchShared(token: string): Promise<SharedChat> {
-  const { data } = await api.get<SharedChat>(`/api/share/${token}`)
+  const { data } = await api.get<SharedChat>(`/share/${token}`)
   return data
 }
 
@@ -48,7 +48,7 @@ export async function fetchPendingApproval(
   sessionId: string,
 ): Promise<{ pending: boolean; tools: { name: string }[] }> {
   const { data } = await api.get<{ pending: boolean; tools: { name: string }[] }>(
-    `/api/chat/sessions/${sessionId}/pending-approval`,
+    `/chat/sessions/${sessionId}/pending-approval`,
   )
   return data
 }
