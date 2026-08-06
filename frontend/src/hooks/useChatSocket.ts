@@ -65,8 +65,8 @@ export function useChatSocket(onFrame: FrameHandler) {
       wsRef.current?.close()
       wsRef.current = null
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    // connect is stable (useCallback with no deps); one socket per mount
+  }, [connect])
 
   const sendChat = useCallback((sessionId: string, message: string, attachments?: string[]) => {
     const payload = JSON.stringify({

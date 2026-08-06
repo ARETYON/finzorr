@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Download, Link2Off, Share2 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import ArtifactPanel, {
-  extractArtifact,
-  type Artifact,
-} from '../components/chat/ArtifactPanel'
+import ArtifactPanel from '../components/chat/ArtifactPanel'
+import { extractArtifact, type Artifact } from '../lib/artifact'
 import PersonaPicker from '../components/chat/PersonaPicker'
 import ChatSidebar from '../components/chat/ChatSidebar'
 import { createShareLink, revokeShareLinks } from '../api/extras'

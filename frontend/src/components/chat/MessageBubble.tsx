@@ -12,8 +12,8 @@ import RouteBadge from './RouteBadge'
 
 interface Props {
   message: ChatMessage
-  onRegenerate?: () => void
-  onEdit?: (content: string) => void
+  onRegenerate?: (() => void) | undefined
+  onEdit?: ((content: string) => void) | undefined
 }
 
 export default function MessageBubble({ message, onRegenerate, onEdit }: Props) {

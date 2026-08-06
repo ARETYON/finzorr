@@ -22,7 +22,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Install dependencies
         run: npm ci
-      - name: Lint (oxlint)
-        run: npm run lint
+      - name: Lint (oxlint, warnings are errors)
+        run: npx oxlint --deny-warnings
       - name: Typecheck + build (tsc strict)
         run: npm run build

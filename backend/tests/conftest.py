@@ -36,7 +36,7 @@ import app.models  # noqa: F401, E402 — registers every table on Base.metadata
 from app.auth.jwt_session import SESSION_COOKIE, create_session_jwt  # noqa: E402
 from app.db.base import Base  # noqa: E402
 from app.db.session import engine  # noqa: E402
-from app.main import app  # noqa: E402
+from app.main import app as fastapi_app  # noqa: E402
 from app.models.user import User  # noqa: E402
 
 _schema_ready = False
@@ -84,7 +84,7 @@ async def _database() -> AsyncIterator[None]:
 @pytest.fixture
 async def client(_database: None) -> AsyncIterator[AsyncClient]:
     """Unauthenticated API client against the real app (no lifespan)."""
-    transport = ASGITransport(app=app)
+    transport = ASGITransport(app=fastapi_app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
 
@@ -111,7 +111,7 @@ async def other_client(_database: None) -> AsyncIterator[AsyncClient]:
         db.add(user)
         await db.commit()
         await db.refresh(user)
-    transport = ASGITransport(app=app)
+    transport = ASGITransport(app=fastapi_app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         c.cookies.set(SESSION_COOKIE, create_session_jwt(user.id))
         yield c

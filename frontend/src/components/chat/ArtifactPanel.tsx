@@ -3,24 +3,7 @@
 import { Copy, Download, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import toast from 'react-hot-toast'
-
-export interface Artifact {
-  title: string
-  content: string
-}
-
-const DOC_BLOCK = /```document\n(.*?)```/s
-
-export function extractArtifact(content: string): Artifact | null {
-  const match = DOC_BLOCK.exec(content)
-  if (!match) return null
-  const lines = match[1].trim().split('\n')
-  return { title: lines[0]?.trim() || 'Document', content: lines.slice(1).join('\n').trim() }
-}
-
-export function stripArtifact(content: string): string {
-  return content.replace(DOC_BLOCK, '').trim()
-}
+import type { Artifact } from '../../lib/artifact'
 
 export default function ArtifactPanel({
   artifact,

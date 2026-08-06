@@ -24,6 +24,7 @@ dependencies = [
     "langgraph>=0.2.60",
     "langgraph-checkpoint-postgres>=2.0",
     "psycopg[binary]>=3.2",
+    "psycopg-pool>=3.2",  # checkpointer AsyncConnectionPool — explicit, not transitive
     "pymupdf>=1.24",
     "pdfplumber>=0.11",
     "python-multipart>=0.0.9",
@@ -68,5 +69,27 @@ markers = [
 [tool.mypy]
 python_version = "3.12"
 strict = true
-ignore_missing_imports = true
+warn_unused_configs = true
 exclude = ["alembic/"]
+
+# Only these third-party packages ship no stubs — everything else is checked
+# for real. A global ignore_missing_imports silently degrades every untyped
+# surface to Any; keep this list explicit and shrinking.
+[[tool.mypy.overrides]]
+module = [
+    "google.auth.*",
+    "google.oauth2.*",
+    "yfinance.*",
+    "rapidfuzz.*",
+    "fitz.*",
+    "docx.*",
+    "bs4.*",
+    "qdrant_client.*",
+    "langgraph.*",
+    "structlog.*",
+    "jwt.*",
+    "cryptography.*",
+    "psycopg.*",
+    "psycopg_pool.*",
+]
+ignore_missing_imports = true

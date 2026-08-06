@@ -103,8 +103,9 @@ export default function MessageInput({
     recognition.interimResults = true
     recognition.continuous = false
     recognition.onresult = (event) => {
-      const transcript = Array.from({ length: event.results.length }, (_, i) =>
-        event.results[i][0].transcript,
+      const transcript = Array.from(
+        { length: event.results.length },
+        (_, i) => event.results[i]?.[0]?.transcript ?? '',
       ).join('')
       setText(transcript)
     }

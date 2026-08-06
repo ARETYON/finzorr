@@ -12,9 +12,11 @@ import {
 import type { ChartData } from '../../types'
 
 export default function PriceChart({ chart }: { chart: ChartData }) {
-  if (!chart.points?.length) return null
-  const first = chart.points[0].close
-  const last = chart.points[chart.points.length - 1].close
+  const firstPoint = chart.points?.[0]
+  const lastPoint = chart.points?.[chart.points.length - 1]
+  if (!firstPoint || !lastPoint) return null
+  const first = firstPoint.close
+  const last = lastPoint.close
   const up = last >= first
   const stroke = up ? 'rgb(var(--ok))' : 'rgb(var(--danger))'
   const changePct = first ? (((last - first) / first) * 100).toFixed(2) : '0'
