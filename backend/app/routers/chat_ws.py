@@ -58,6 +58,14 @@ async def _persist_partial(session_id: uuid.UUID, user_msg: str, partial: str) -
         log.warning("ws.cancel.persist_failed", error=str(exc))
 
 
+def _parse_attachments(data: dict[str, Any]) -> list[str]:
+    """Tolerate any client-supplied shape: null, non-list, mixed types."""
+    raw = data.get("attachments")
+    if not isinstance(raw, list):
+        return []
+    return [a for a in raw if isinstance(a, str)][:1]
+
+
 async def _owned_session_id(user: User, raw: str) -> uuid.UUID | None:
     try:
         session_id = uuid.UUID(raw)
@@ -103,6 +111,10 @@ class _Connection:
         if not user_msg:
             await self.send({"type": "error", "message": "empty message"})
             return
+        # ALL client-data parsing happens BEFORE the session is claimed — a
+        # malformed frame raising after add() would brick the session for the
+        # process lifetime (only _run releases the guard).
+        attachments = _parse_attachments(data)
         sid = str(session_id)
         if sid in _active_sessions:
             await self.send(
@@ -110,9 +122,12 @@ class _Connection:
             )
             return
         _active_sessions.add(sid)
-        attachments = [str(a) for a in data.get("attachments", []) if isinstance(a, str)][:1]
-        await self.send({"type": "thinking"})
-        self.turn_task = asyncio.create_task(self._run(session_id, user_msg, attachments))
+        try:
+            await self.send({"type": "thinking"})
+            self.turn_task = asyncio.create_task(self._run(session_id, user_msg, attachments))
+        except BaseException:
+            _active_sessions.discard(sid)  # claim must never outlive a failed start
+            raise
 
     async def _run(
         self, session_id: uuid.UUID, user_msg: str, attachments: list[str]
@@ -171,6 +186,9 @@ async def chat_websocket(websocket: WebSocket) -> None:
             try:
                 data = json.loads(raw)
             except json.JSONDecodeError:
+                await conn.send({"type": "error", "message": "invalid frame"})
+                continue
+            if not isinstance(data, dict):  # "[]" / "42" would kill the handler
                 await conn.send({"type": "error", "message": "invalid frame"})
                 continue
             frame_type = data.get("type")

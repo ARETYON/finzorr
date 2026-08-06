@@ -1,6 +1,6 @@
 """Watchlist REST — idempotent add/remove, user-scoped."""
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -62,9 +62,11 @@ async def remove_item(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    await db.execute(
+    result = await db.execute(
         delete(WatchlistItem).where(
             WatchlistItem.user_id == user.id, WatchlistItem.symbol == symbol.upper()
         )
     )
     await db.commit()
+    if getattr(result, "rowcount", 0) == 0:  # 404 like every other delete
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "symbol not on watchlist")

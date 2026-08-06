@@ -33,9 +33,15 @@ def configure_logging() -> None:
     )
 
 
-def new_correlation_id() -> str:
-    """Mint a short correlation ID and bind it to the logging context."""
-    cid = uuid.uuid4().hex[:12]
+def new_correlation_id(inherit: str | None = None) -> str:
+    """Bind a correlation ID to the logging context.
+
+    `inherit` adopts an upstream id (proxy/LB X-Request-ID propagation) so
+    one request keeps one id across hops; sanitized and length-capped since
+    it arrives from a header.
+    """
+    cid = "".join(c for c in inherit if c.isalnum() or c == "-")[:64] if inherit else ""
+    cid = cid or uuid.uuid4().hex[:12]
     _correlation_id.set(cid)
     structlog.contextvars.bind_contextvars(correlation_id=cid)
     return cid

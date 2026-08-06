@@ -6,6 +6,7 @@ from app.ai.base import SystemMessage, UserMessage
 from app.ai.completion import stream
 from app.core.logging import log
 from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
+from app.core.untrusted import wrap_untrusted
 from app.core.web_search import search
 from app.graph.nodes.common import with_instructions
 from app.graph.state import AssistantState
@@ -40,8 +41,13 @@ async def web_search_node(state: AssistantState) -> AssistantState:
             ),
             "route": "web_search",
         }
-    numbered = "\n\n".join(
-        f"[{i}] {r.title}\nURL: {r.url}\n{r.snippet}" for i, r in enumerate(results, start=1)
+    # Titles/snippets are attacker-influenceable (SEO'd pages) — fence them
+    # exactly like page bodies, not just the fetched content.
+    numbered = wrap_untrusted(
+        "\n\n".join(
+            f"[{i}] {r.title}\nURL: {r.url}\n{r.snippet}" for i, r in enumerate(results, start=1)
+        ),
+        "search results",
     )
 
     async def on_token(t: str) -> None:

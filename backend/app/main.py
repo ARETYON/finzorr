@@ -88,8 +88,15 @@ app = FastAPI(title="finzorr.ai API", version="0.1.0", lifespan=lifespan)
 async def request_id_middleware(
     request: Request, call_next: Callable[[Request], Awaitable[Response]]
 ) -> Response:
-    """Bind a correlation id per request and surface it as X-Request-ID."""
-    cid = new_correlation_id()
+    """Bind a correlation id per request and surface it as X-Request-ID.
+
+    An inbound X-Request-ID (proxy/LB propagation) is honored; the id is
+    stashed on request.state so the 500 handler reports the SAME id the
+    request's log lines carry — a mismatched id defeats log correlation.
+    """
+    inbound = request.headers.get("X-Request-ID", "")
+    cid = new_correlation_id(inbound or None)
+    request.state.request_id = cid
     response = await call_next(request)
     response.headers["X-Request-ID"] = cid
     return response
@@ -99,12 +106,19 @@ async def request_id_middleware(
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """Uniform 500 envelope — never leak internals, always give the request id
     so a user report can be matched to the structured logs."""
-    cid = request.headers.get("X-Request-ID", "") or new_correlation_id()
+    cid = getattr(request.state, "request_id", "") or new_correlation_id()
     log.error("http.unhandled", path=request.url.path, error=str(exc))
+    headers = {"X-Request-ID": cid}
+    # This handler runs in ServerErrorMiddleware, OUTSIDE CORSMiddleware —
+    # without these the browser reports a CORS failure instead of our envelope.
+    if request.headers.get("origin") == settings.FRONTEND_ORIGIN:
+        headers["Access-Control-Allow-Origin"] = settings.FRONTEND_ORIGIN
+        headers["Access-Control-Allow-Credentials"] = "true"
+        headers["Access-Control-Expose-Headers"] = "X-Request-ID"
     return JSONResponse(
         status_code=500,
         content={"detail": "internal server error", "request_id": cid},
-        headers={"X-Request-ID": cid},
+        headers=headers,
     )
 
 
@@ -114,6 +128,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID"],  # otherwise the SPA can never read it
 )
 
 app.include_router(health.router)

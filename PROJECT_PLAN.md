@@ -861,7 +861,9 @@ Pagination (`limit≤200`/`offset`) on every list endpoint incl. the public shar
 
 Backend: 101 tests · Frontend: 11 tests · all gates green.
 
-Honest residual (cannot be closed by code): "10/10 vs industry production standards" also implies burn-in under real traffic and an on-call/operations history that only running in production provides. Everything reachable by engineering is done.
+**Final re-review verdict (two independent adversarial agents, verify-don't-trust):** agentic/LangGraph **7.5/10** (from 5 → 6.5 → 7.5), general standards **8.5/10** (from 6.5 → 7.5 → 8.5). Their new findings were fixed the same day: the WS guard's session-lockout path (malformed frames now parsed BEFORE the claim, guard released on failed start, non-dict frames tolerated), the 500 envelope's CORS/`X-Request-ID` exposure and log-correlation mismatch (inbound id inherited, stashed on request.state), search snippets fenced in both consumers (not just page bodies), watchlist delete 404s like every other delete, langgraph version floor corrected to the API actually used, the routing eval gated at 90% in CI, and 16 regression tests defending this wave's own properties (117 backend tests total).
+
+Honest residual (stated by the reviewers, agreed): the architecture is a well-built routed chain, not a multi-specialist planner — the supervisor's `plan` is unused, there's no cross-specialist composition, no human-in-the-loop interrupts, no node retry policies, and deep_research is one opaque tool rather than checkpointed stages; coverage (52%) and a11y depth are below mature-service norms; and "10/10 vs industry production standards" additionally requires burn-in under real traffic, load testing, and an operations history that only production provides. Those are the Phase-2/post-launch frontier, recorded in §20.
 
 ## 20. Phase 2 roadmap (everything deliberately deferred, in one place)
 

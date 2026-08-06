@@ -75,7 +75,7 @@ DATASET: list[tuple[str, str]] = [
 ]
 
 
-def _score(predict: dict[str, str]) -> None:
+def _score(predict: dict[str, str]) -> float:
     per_route: dict[str, list[bool]] = defaultdict(list)
     misroutes: list[tuple[str, str, str]] = []
     for message, expected in DATASET:
@@ -93,16 +93,17 @@ def _score(predict: dict[str, str]) -> None:
         print("\nmisroutes:")
         for message, expected, got in misroutes:
             print(f"  [{expected} -> {got}] {message[:60]}")
+    return correct / total
 
 
-def run_offline() -> None:
+def run_offline() -> float:
     from app.graph.supervisor import keyword_route
 
     print("== deterministic keyword floor ==")
-    _score({m: keyword_route(m) for m, _ in DATASET})
+    return _score({m: keyword_route(m) for m, _ in DATASET})
 
 
-async def run_live() -> None:
+async def run_live() -> float:
     from app.graph.supervisor import plan_and_route
 
     print("== live LLM supervisor ==")
@@ -113,14 +114,20 @@ async def run_live() -> None:
         sys.stdout.write(".")
         sys.stdout.flush()
     print()
-    _score(predictions)
+    return _score(predictions)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--live", action="store_true", help="score the LLM supervisor")
+    parser.add_argument(
+        "--min-accuracy",
+        type=float,
+        default=0.0,
+        help="exit non-zero below this accuracy (CI gate)",
+    )
     args = parser.parse_args()
-    if args.live:
-        asyncio.run(run_live())
-    else:
-        run_offline()
+    accuracy = asyncio.run(run_live()) if args.live else run_offline()
+    if accuracy < args.min_accuracy:
+        print(f"\nFAIL: accuracy {accuracy:.1%} < required {args.min_accuracy:.1%}")
+        sys.exit(1)

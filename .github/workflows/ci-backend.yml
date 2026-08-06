@@ -34,7 +34,7 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
       - name: Lint (ruff)
-        run: uv run ruff check app/ tests/ alembic/
+        run: uv run ruff check app/ tests/ alembic/ evals/
       - name: Typecheck (mypy --strict)
         run: uv run mypy app/ tests/
       - name: Env-var parity (.env.example covers every Settings field)
@@ -48,6 +48,8 @@ jobs:
           EOF
       - name: Sanity tests (no live deps)
         run: uv run pytest tests/ -q -m sanity --cov=app --cov-report=
+      - name: Routing eval (deterministic keyword floor, gated at 90%)
+        run: uv run python -m evals.routing_eval --min-accuracy 0.9
       - name: Migrations run clean on a fresh database
         env:
           DATABASE_URL: postgresql+psycopg://finzorr:finzorr@localhost:5433/finzorr_test

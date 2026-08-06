@@ -563,7 +563,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
     { name = "google-auth", specifier = ">=2.30" },
     { name = "httpx", specifier = ">=0.27" },
-    { name = "langgraph", specifier = ">=0.2.60" },
+    { name = "langgraph", specifier = ">=1.2" },
     { name = "langgraph-checkpoint-postgres", specifier = ">=2.0" },
     { name = "lxml", specifier = ">=5.2" },
     { name = "openai", specifier = ">=1.40" },

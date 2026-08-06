@@ -12,6 +12,7 @@ from typing import Any
 from app.ai.base import SystemMessage, ToolDefinition, UserMessage
 from app.ai.completion import complete
 from app.core.logging import log
+from app.core.untrusted import wrap_untrusted
 from app.core.web_search import search as web_search
 from app.tools_registry.dispatcher import register_tool
 
@@ -89,9 +90,12 @@ async def _research(args: dict[str, Any]) -> str:
         if isinstance(p, str) and not p.startswith("Error:")
     ]
 
-    numbered_sources = "\n".join(
-        f"[{i}] {s['title']} — {s['url']}\n{s['snippet']}"
-        for i, s in enumerate(sources[:10], start=1)
+    numbered_sources = wrap_untrusted(
+        "\n".join(
+            f"[{i}] {s['title']} — {s['url']}\n{s['snippet']}"
+            for i, s in enumerate(sources[:10], start=1)
+        ),
+        "search results",
     )
     context = "\n\n".join(page_texts)
     try:
