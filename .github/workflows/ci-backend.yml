@@ -65,4 +65,4 @@ jobs:
       - name: Integration tests (router + ownership, live Postgres)
         env:
           TEST_DATABASE_URL: postgresql+asyncpg://finzorr:finzorr@localhost:5433/finzorr_test
-        run: uv run pytest tests/ -q -m integration --cov=app --cov-append --cov-fail-under=50
+        run: uv run pytest tests/ -q -m integration --cov=app --cov-append --cov-fail-under=70

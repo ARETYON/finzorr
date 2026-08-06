@@ -34,12 +34,12 @@ def test_resolve_exact_ticker_any_case_or_padding() -> None:
     assert _resolve_yahoo_symbol("tcs") == "TCS.NS"
 
 
-def test_resolve_multiword_name_falls_through_to_probe() -> None:
-    # KNOWN GAP: the query is uppercased before the fuzzy match, which tanks
-    # rapidfuzz WRatio scores below the 70 threshold for multi-word names
-    # (search("reliance industries") resolves; search("RELIANCE INDUSTRIES")
-    # does not) — so resolution falls through to the raw `.NS` probe.
-    assert _resolve_yahoo_symbol("reliance industries") == "RELIANCE INDUSTRIES.NS"
+def test_resolve_multiword_name_resolves_to_ticker() -> None:
+    # Was a KNOWN GAP (case-sensitive fuzzy match tanked multi-word names
+    # below the 70 floor after the caller uppercased); fixed by scoring
+    # ticker/name separately with rapidfuzz's default_process.
+    assert _resolve_yahoo_symbol("reliance industries") == "RELIANCE.NS"
+    assert _resolve_yahoo_symbol("RELIANCE INDUSTRIES") == "RELIANCE.NS"
 
 
 def test_resolve_unknown_falls_back_to_ns_probe() -> None:

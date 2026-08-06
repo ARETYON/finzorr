@@ -26,6 +26,15 @@ def test_fuzzy_company_name_resolution() -> None:
     assert search("tata consultancy")[0].symbol == "TCS"
 
 
+def test_fuzzy_match_is_case_insensitive_for_multiword_names() -> None:
+    """X11 regression: callers uppercase before searching; multi-word names
+    must still clear the score floor (matching was case-sensitive), and a
+    'Ltd'-suffixed query must not lose its bank to a longer-named one."""
+    assert search("RELIANCE INDUSTRIES")[0].symbol == "RELIANCE"
+    assert search("TATA CONSULTANCY SERVICES")[0].symbol == "TCS"
+    assert search("HDFC BANK LTD")[0].symbol == "HDFCBANK"
+
+
 def test_nonsense_query_returns_empty() -> None:
     assert search("zzzzqqqq totally unknown co") == []
 

@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
-from rapidfuzz import fuzz, process
+from rapidfuzz import fuzz, utils
 
 from app.market_data.base import SymbolMatch
 
@@ -42,11 +42,26 @@ def search(query: str, limit: int = 5) -> list[SymbolMatch]:
     for s in symbols:
         if s.symbol.upper() == query_upper:
             return [SymbolMatch(s.symbol, s.name, s.exchange, 100.0)]
-    choices = {i: f"{s.symbol} {s.name}" for i, s in enumerate(symbols)}
-    results = process.extract(query, choices, scorer=fuzz.WRatio, limit=limit)
+    # Score ticker and company name SEPARATELY and keep the best: a single
+    # "SYMBOL Name" string dilutes short names ("HDFC Bank" vs a "... Ltd"
+    # query loses to longer-named banks). default_process lowercases/strips
+    # both sides — without it, matching is case-sensitive and multi-word
+    # names from uppercasing callers score below the 70 floor (both found
+    # by the X11 review agent). 58 seed rows: a direct loop is fine.
+    scored = [
+        (
+            max(
+                fuzz.WRatio(query, s.symbol, processor=utils.default_process),
+                fuzz.WRatio(query, s.name, processor=utils.default_process),
+            ),
+            i,
+        )
+        for i, s in enumerate(symbols)
+    ]
+    scored.sort(key=lambda pair: -pair[0])
     return [
-        SymbolMatch(symbols[idx].symbol, symbols[idx].name, symbols[idx].exchange, float(score))
-        for _choice, score, idx in results
+        SymbolMatch(symbols[i].symbol, symbols[i].name, symbols[i].exchange, float(score))
+        for score, i in scored[:limit]
         if score >= MIN_MATCH_SCORE
     ]
 
