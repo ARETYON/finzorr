@@ -53,9 +53,8 @@ class TestWithInstructions:
 
 class TestRoutingContext:
     def test_includes_previous_exchange_truncated(self) -> None:
-        from app.graph.supervisor import _CONTEXT_CHARS, _routing_context
-
         from app.graph.state import AssistantState
+        from app.graph.supervisor import _CONTEXT_CHARS, _routing_context
 
         state: AssistantState = {
             "messages": [
