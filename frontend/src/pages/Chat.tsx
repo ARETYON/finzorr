@@ -217,7 +217,8 @@ export default function Chat() {
           </div>
         </header>
         <div className="flex-1 overflow-y-auto px-4 py-4">
-          <div className="mx-auto max-w-3xl space-y-4">
+          {/* polite live region: screen readers announce streamed replies */}
+          <div className="mx-auto max-w-3xl space-y-4" aria-live="polite" aria-busy={streaming}>
             {messages.length === 0 && !thinking && (
               <div className="pt-16 text-center text-sm text-ink-faint">
                 Ask about a stock, screen the market, or just chat.

@@ -36,7 +36,7 @@ async def cached_json(
     """
     redis = None
     try:
-        from app.services.redis_client import get_redis
+        from app.core.redis import get_redis
 
         redis = get_redis()
         hit = await redis.get(key)

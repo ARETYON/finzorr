@@ -3,6 +3,8 @@ import react from '@vitejs/plugin-react'
 
 // Dev proxy: /api and /ws go to the local FastAPI backend so the SPA can use
 // relative URLs in dev (no VITE_API_BASE_URL needed until uat/prod).
+// Test config lives in vitest.config.ts — this project runs rolldown-vite,
+// whose plugin types clash with the rollup-vite that vitest bundles.
 export default defineConfig({
   plugins: [react()],
   server: {

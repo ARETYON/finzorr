@@ -1,6 +1,6 @@
 // Settings: custom instructions (server-side) + auto-read toggle (client-side).
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { Trash2, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { API_BASE } from '../api/client'
@@ -18,6 +18,36 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   const [personas, setPersonas] = useState<PersonaInfo[]>([])
   const [newPersonaName, setNewPersonaName] = useState('')
   const [newPersonaPrompt, setNewPersonaPrompt] = useState('')
+  const dialogRef = useRef<HTMLDivElement>(null)
+
+  // dialog semantics: focus moves in on open and is trapped; Escape closes
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null
+    dialogRef.current?.querySelector<HTMLElement>('textarea, button, input')?.focus()
+    return () => previouslyFocused?.focus()
+  }, [])
+
+  const onDialogKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      onClose()
+      return
+    }
+    if (e.key !== 'Tab' || !dialogRef.current) return
+    const focusables = dialogRef.current.querySelectorAll<HTMLElement>(
+      'button, [href], input, textarea, select, [tabindex]:not([tabindex="-1"])',
+    )
+    if (focusables.length === 0) return
+    const first = focusables[0]
+    const last = focusables[focusables.length - 1]
+    if (!first || !last) return
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault()
+      last.focus()
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault()
+      first.focus()
+    }
+  }
 
   useEffect(() => {
     setInstructions(user?.custom_instructions ?? '')
@@ -79,19 +109,27 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="settings-title"
+        ref={dialogRef}
         className="clip-panel fui-brackets w-full max-w-md rounded-2xl border border-line bg-panel p-6 shadow-lg"
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={onDialogKeyDown}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="app-title text-sm font-semibold text-ink-strong">Settings</h2>
+          <h2 id="settings-title" className="app-title text-sm font-semibold text-ink-strong">
+            Settings
+          </h2>
           <button onClick={onClose} className="text-ink-faint hover:text-ink-mid" aria-label="Close">
             <X size={16} />
           </button>
         </div>
-        <label className="mb-1 block text-xs font-medium text-ink-mid">
+        <label htmlFor="settings-instructions" className="mb-1 block text-xs font-medium text-ink-mid">
           Custom instructions (applied to every conversation)
         </label>
         <textarea
+          id="settings-instructions"
           value={instructions}
           onChange={(e) => setInstructions(e.target.value)}
           rows={4}

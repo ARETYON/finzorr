@@ -24,5 +24,7 @@ jobs:
         run: npm ci
       - name: Lint (oxlint, warnings are errors)
         run: npx oxlint --deny-warnings
+      - name: Unit tests (vitest)
+        run: npm test
       - name: Typecheck + build (tsc strict)
         run: npm run build

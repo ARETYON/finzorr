@@ -30,7 +30,7 @@ async def _budget_exceeded(provider: str) -> bool:
     if settings.DAILY_TOKEN_BUDGET <= 0:
         return False
     try:
-        from app.services.redis_client import get_redis
+        from app.core.redis import get_redis
 
         used = await get_redis().get(_budget_key(provider))
         return int(used or 0) >= settings.DAILY_TOKEN_BUDGET
@@ -43,7 +43,7 @@ async def _record_usage(provider: str, usage: Usage) -> None:
     if usage.total_tokens <= 0:
         return
     try:
-        from app.services.redis_client import get_redis
+        from app.core.redis import get_redis
 
         redis = get_redis()
         key = _budget_key(provider)

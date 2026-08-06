@@ -1,32 +1,44 @@
-# React + TypeScript + Vite
+# finzorr.ai — frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React 19 + TypeScript (strict, `noUncheckedIndexedAccess`,
+`exactOptionalPropertyTypes`) + Vite (rolldown) + Tailwind. Two selectable
+themes: Light (default) and the sci-fi FUI "Ops" skin, both driven by CSS
+custom-property tokens in `src/index.css`.
 
-Currently, two official plugins are available:
+## Run
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm ci
+npm run dev        # http://localhost:5173 — /api and /ws proxy to :8000
+npm test           # vitest (jsdom)
+npx oxlint --deny-warnings
+npm run build      # tsc -b && vite build
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Copy `.env.example` to `.env.local` to override:
+
+- `VITE_API_BASE_URL` — backend origin (empty in dev; the Vite proxy covers it)
+- `VITE_GOOGLE_CLIENT_ID` — Google Identity Services client id (empty hides
+  the Google button; the dev bypass still works)
+
+## Layout
+
+- `src/pages/` — `Login`, `Chat` (main app), `Share` (public transcript)
+- `src/components/chat/` — sidebar, message bubbles, input (mic + image
+  attach), price chart, artifact panel, persona picker
+- `src/hooks/useChatSocket.ts` — WS client: exponential-backoff reconnect,
+  ping keepalive, offline send queue, mid-stream cancel
+- `src/store/` — zustand stores (auth, chat, theme, settings)
+- `src/api/` — one typed module per backend domain over a single axios
+  instance (`withCredentials`)
+- `src/lib/` — pure helpers (artifact block parsing)
+
+## Conventions
+
+- Tests live next to the code as `*.test.ts(x)`; vitest config is separate
+  from `vite.config.ts` (rolldown-vite vs vitest's bundled rollup-vite types
+  don't mix in one file).
+- oxlint runs with warnings-as-errors in CI; keep the config in
+  `.oxlintrc.json` authoritative.
+- WS frames and REST shapes mirror the backend's pydantic schemas — update
+  `src/types.ts` / `src/api/*` in the same PR as any backend schema change.

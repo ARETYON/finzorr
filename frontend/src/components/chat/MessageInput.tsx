@@ -146,6 +146,7 @@ export default function MessageInput({
           onChange={(e) => void pickImage(e.target.files?.[0])}
         />
         <textarea
+          aria-label="Message finzorr"
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}

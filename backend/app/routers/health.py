@@ -22,7 +22,7 @@ async def healthz() -> HealthOut:
 async def readyz() -> ReadyOut:
     """Readiness: verify DB and Redis connections; degrade per-dependency."""
     from app.db.session import engine
-    from app.services.redis_client import get_redis
+    from app.core.redis import get_redis
 
     try:
         async with engine.connect() as conn:
