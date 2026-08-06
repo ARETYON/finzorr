@@ -78,6 +78,35 @@ DATASET: list[tuple[str, str]] = [
     ("Every day at 9am summarize my watchlist", "memory"),
 ]
 
+# Held-out split: natural paraphrases deliberately AVOIDING the keyword-hint
+# vocabulary, authored separately from the regexes. The core dataset above
+# and the regexes were co-authored, so its number measures self-consistency;
+# THIS split measures generalization. Reported separately; the CI gate stays
+# on the core floor (a keyword router is not expected to ace these — the LLM
+# supervisor is, via --live).
+HELD_OUT: list[tuple[str, str]] = [
+    ("How much does one Tata Consultancy share go for?", "tools"),
+    ("Is Wipro up or down right now?", "tools"),
+    ("Pull up what Reliance is worth at the moment", "tools"),
+    ("What did I put into my holdings and how are they faring?", "tools"),
+    ("Crunch these numbers for me: 12% yearly growth on 2 lakh over a decade", "tools"),
+    ("Anything big happen with the RBI this morning?", "web_search"),
+    ("Fill me in on what markets did after the election results", "web_search"),
+    ("What's everyone saying about Adani right now?", "web_search"),
+    ("Which companies look cheap relative to earnings?", "nl2sql"),
+    ("Give me a shortlist of firms paying out generous dividends", "nl2sql"),
+    ("I want the biggest IT firms by size", "nl2sql"),
+    ("What did that file I gave you conclude about margins?", "rag"),
+    ("Look inside the annual report I shared and pull the risk factors", "rag"),
+    ("Keep an eye on Infosys for me", "memory"),
+    ("Ping me if TCS crosses five thousand", "memory"),
+    ("From now on, keep replies to two sentences", "memory"),
+    ("Dig deep into how India's solar sector is evolving", "research"),
+    ("I need an in-depth writeup weighing gold versus equity", "research"),
+    ("Help me draft a birthday note for my accountant", "general_chat"),
+    ("Why do people say diversification matters?", "general_chat"),
+]
+
 
 def _score(predict: dict[str, str]) -> float:
     per_route: dict[str, list[bool]] = defaultdict(list)
@@ -103,8 +132,14 @@ def _score(predict: dict[str, str]) -> float:
 def run_offline() -> float:
     from app.graph.supervisor import keyword_route
 
-    print("== deterministic keyword floor ==")
-    return _score({m: keyword_route(m) for m, _ in DATASET})
+    print("== deterministic keyword floor (core) ==")
+    accuracy = _score({m: keyword_route(m) for m, _ in DATASET})
+    held_correct = sum(1 for m, e in HELD_OUT if keyword_route(m) == e)
+    print(
+        f"\nheld-out paraphrases (informational, not gated): "
+        f"{held_correct}/{len(HELD_OUT)} = {held_correct / len(HELD_OUT):.1%}"
+    )
+    return accuracy
 
 
 async def run_live() -> float:

@@ -144,6 +144,9 @@ class _Connection:
                 partial.append(str(frame.get("delta", "")))
             await self.send(frame)
 
+        # The lock is released BEFORE each terminal frame — a client that
+        # reacts instantly to `response` must not bounce off its own turn's
+        # not-yet-released claim. The finally is the idempotent backstop.
         try:
             response = await run_turn(
                 session_id,
@@ -154,17 +157,20 @@ class _Connection:
                 on_frame=_send_and_record,
                 turn_id=turn_id,
             )
+            await release_turn(str(session_id))
             await self.send(response)
         except asyncio.CancelledError:
             await asyncio.shield(
                 _persist_partial(session_id, user_msg, "".join(partial), turn_id)
             )
+            await asyncio.shield(release_turn(str(session_id)))
             await self.send({"type": "stopped"})
         except Exception as exc:  # noqa: BLE001 — degrade, keep the socket alive
             log.error("ws.turn.error", error=str(exc))
+            await release_turn(str(session_id))
             await self.send({"type": "error", "message": "assistant error — please retry"})
         finally:
-            await release_turn(str(session_id))
+            await asyncio.shield(release_turn(str(session_id)))
 
     async def start_approval(self, data: dict[str, Any]) -> None:
         """Resume a turn parked at a HITL interrupt with approve/decline."""
@@ -192,14 +198,17 @@ class _Connection:
     async def _run_resume(self, session_id: uuid.UUID, approved: bool) -> None:
         try:
             response = await resume_turn(session_id, approved, on_frame=self.send)
+            await release_turn(str(session_id))
             await self.send(response)
         except asyncio.CancelledError:
+            await asyncio.shield(release_turn(str(session_id)))
             await self.send({"type": "stopped"})
         except Exception as exc:  # noqa: BLE001 — degrade, keep the socket alive
             log.error("ws.resume.error", error=str(exc))
+            await release_turn(str(session_id))
             await self.send({"type": "error", "message": "assistant error — please retry"})
         finally:
-            await release_turn(str(session_id))
+            await asyncio.shield(release_turn(str(session_id)))
 
     def cancel_turn(self) -> bool:
         if self.busy and self.turn_task is not None:

@@ -26,7 +26,7 @@ MAX_SUBQUESTIONS = 4
 MAX_PAGE_FETCHES = 4
 _PAGE_CHARS = 2500
 _PLAN_TIMEOUT_S = 30.0
-_SYNTHESIS_TIMEOUT_S = 60.0
+_SYNTHESIS_TIMEOUT_S = 180.0  # local models need time for a 2k-token report over a 10k context
 _JSON_ARRAY = re.compile(r"\[.*\]", re.DOTALL)
 
 register(
@@ -167,7 +167,7 @@ async def research_synthesize_node(state: AssistantState) -> AssistantState:
             pages=len(state.get("research_pages", [])),
         )
     except Exception as exc:  # noqa: BLE001 — degrade to what was gathered
-        log.error("research.synthesis_failed", error=str(exc))
+        log.error("research.synthesis_failed", error=f"{type(exc).__name__}: {exc}")
         result["final_text"] = (
             f"Research gathered {len(sources)} sources but synthesis failed — "
             "please retry."

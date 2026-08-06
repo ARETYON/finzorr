@@ -50,6 +50,8 @@ jobs:
         run: uv run pytest tests/ -q -m sanity --cov=app --cov-report=
       - name: Routing eval (deterministic keyword floor, gated at 90%)
         run: uv run python -m evals.routing_eval --min-accuracy 0.9
+      - name: Injection-resistance eval (gated at 100%)
+        run: uv run python -m evals.injection_eval
       - name: Migrations run clean on a fresh database
         env:
           DATABASE_URL: postgresql+psycopg://finzorr:finzorr@localhost:5433/finzorr_test
