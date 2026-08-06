@@ -4,6 +4,7 @@ Sequential with silent per-provider exception swallowing — the first provider
 returning results wins; "none" means every provider failed.
 """
 
+import asyncio
 from dataclasses import dataclass
 
 import httpx
@@ -62,7 +63,12 @@ async def _duckduckgo(query: str, max_results: int) -> list[SearchResult]:
     ) as client:
         response = await client.post("https://html.duckduckgo.com/html/", data={"q": query})
         response.raise_for_status()
-    soup = BeautifulSoup(response.text, "lxml")
+    # SERP parsing is CPU-bound lxml work — keep it off the event loop.
+    return await asyncio.to_thread(_parse_duckduckgo, response.text, max_results)
+
+
+def _parse_duckduckgo(html: str, max_results: int) -> list[SearchResult]:
+    soup = BeautifulSoup(html, "lxml")
     results: list[SearchResult] = []
     for block in soup.select("div.result")[:max_results]:
         link = block.select_one("a.result__a")

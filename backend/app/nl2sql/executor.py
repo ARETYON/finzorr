@@ -63,10 +63,10 @@ def validate(sql: str) -> str:
     if not sql.strip():
         raise SQLValidationError("empty SQL")
     try:
-        statements = sqlglot.parse(sql, read="postgres")
+        parsed = sqlglot.parse(sql, read="postgres")
     except sqlglot.errors.ParseError as exc:
         raise SQLValidationError(f"unparseable SQL: {exc}") from exc
-    statements = [s for s in statements if s is not None]
+    statements = [s for s in parsed if s is not None]
     if len(statements) != 1:
         raise SQLValidationError("exactly one statement is allowed")
     stmt = statements[0]
@@ -74,29 +74,42 @@ def validate(sql: str) -> str:
     root = stmt
     while isinstance(root, exp.With):  # unwrap CTE wrapper
         root = root.this
-    if not isinstance(root, exp.Select) and not isinstance(stmt, exp.Select):
+    if not isinstance(root, exp.Select):
         raise SQLValidationError("only SELECT statements are allowed")
 
     for node in stmt.walk():
         if isinstance(node, _FORBIDDEN):
             raise SQLValidationError(f"forbidden expression: {type(node).__name__}")
+        # `SELECT ... INTO new_table` parses as a plain Select — catch the
+        # INTO arg explicitly; it's a write wearing SELECT clothing.
+        if isinstance(node, exp.Select) and node.args.get("into") is not None:
+            raise SQLValidationError("SELECT INTO is not allowed")
 
     cte_names = {cte.alias_or_name for cte in stmt.find_all(exp.CTE)}
+    referenced: set[str] = set()
     for table in stmt.find_all(exp.Table):
         name = table.name
         if name and name not in cte_names and name not in ALLOWED_TABLES:
             raise SQLValidationError(f"table not allowed: {name}")
+        if name:
+            referenced.add(name)
+    # Table-free queries (SELECT pg_sleep(30), SELECT generate_series(...))
+    # slipped every layer above — require at least one whitelisted table.
+    if not referenced & ALLOWED_TABLES:
+        raise SQLValidationError("query must read from an allowed table")
 
-    limit = stmt.args.get("limit")
+    # Apply the LIMIT on the (unwrapped) SELECT in place so it lands inside
+    # the original statement tree even when the top node is a CTE wrapper.
+    limit = root.args.get("limit")
     if limit is None:
-        stmt = stmt.limit(MAX_ROWS)
+        root.limit(MAX_ROWS, copy=False)
     else:
         try:
             current = int(limit.expression.name)
             if current > MAX_ROWS:
-                stmt = stmt.limit(MAX_ROWS)
+                root.limit(MAX_ROWS, copy=False)
         except (AttributeError, ValueError):
-            stmt = stmt.limit(MAX_ROWS)
+            root.limit(MAX_ROWS, copy=False)
     return stmt.sql(dialect="postgres")
 
 

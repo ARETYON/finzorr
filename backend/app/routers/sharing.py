@@ -87,10 +87,12 @@ async def delete_persona(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    await db.execute(
+    result = await db.execute(
         delete(Persona).where(Persona.id == persona_id, Persona.user_id == user.id)
     )
     await db.commit()
+    if getattr(result, "rowcount", 0) == 0:  # not found OR not owned — 404 like everywhere
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "persona not found")
 
 
 class SessionPersonaIn(BaseModel):

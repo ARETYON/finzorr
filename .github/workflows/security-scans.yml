@@ -3,6 +3,7 @@ name: security-scans
 on:
   push:
     branches: [main]
+  pull_request:
   schedule:
     - cron: "0 3 * * 1" # weekly, Monday 03:00 UTC
   workflow_dispatch:
@@ -29,10 +30,10 @@ jobs:
         working-directory: backend
         run: |
           uv sync --frozen
-          uv run --with pip-audit pip-audit --skip-editable || true
+          uv run --with pip-audit pip-audit --skip-editable
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - name: npm audit (frontend, high+)
         working-directory: frontend
-        run: npm audit --audit-level=high || true
+        run: npm audit --audit-level=high

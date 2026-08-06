@@ -9,6 +9,7 @@ never a new code path.
 from collections.abc import AsyncIterator
 from typing import Any
 
+import httpx
 from openai import AsyncOpenAI
 
 from app.ai.base import (
@@ -47,12 +48,23 @@ def _to_wire(msg: ChatMessage) -> dict[str, Any]:
     raise TypeError(f"unknown message type: {type(msg)!r}")
 
 
+# Wall-clock bound on any single LLM request. Without it the OpenAI SDK's
+# 600s default let a hung provider pin a turn (and its WS slot) for 10 min —
+# tools had a 20s cap while the component most likely to hang had none.
+_LLM_TIMEOUT_S = 120.0
+_LLM_CONNECT_TIMEOUT_S = 10.0
+
+
 class OpenAICompatibleProvider:
     """Streams chat completions (with tool-calling) from any OpenAI-style API."""
 
     def __init__(self, name: str, base_url: str, api_key: str) -> None:
         self.name = name
-        self._client = AsyncOpenAI(base_url=base_url, api_key=api_key or "unused")
+        self._client = AsyncOpenAI(
+            base_url=base_url,
+            api_key=api_key or "unused",
+            timeout=httpx.Timeout(_LLM_TIMEOUT_S, connect=_LLM_CONNECT_TIMEOUT_S),
+        )
 
     async def chat(
         self,
@@ -103,12 +115,22 @@ class OpenAICompatibleProvider:
                 text_parts.append(delta.content)
                 yield TextDelta(text=delta.content)
             for tc in delta.tool_calls or []:
-                slot = partial.setdefault(tc.index, {"id": "", "name": "", "args": ""})
+                # Some OpenAI-compat shims omit `index`: an id means a new
+                # call, otherwise it's a continuation of the latest slot.
+                if tc.index is not None:
+                    index = tc.index
+                elif tc.id:
+                    index = len(partial)
+                else:
+                    index = max(partial) if partial else 0
+                slot = partial.setdefault(index, {"id": "", "name": "", "args": ""})
                 if tc.id:
                     slot["id"] = tc.id
                 if tc.function is not None:
                     if tc.function.name:
-                        slot["name"] += tc.function.name
+                        # Assign, don't concatenate: several shims repeat the
+                        # full name in every delta ("get_quoteget_quote").
+                        slot["name"] = tc.function.name
                     if tc.function.arguments:
                         slot["args"] += tc.function.arguments
 

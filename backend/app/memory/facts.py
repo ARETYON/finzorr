@@ -21,6 +21,7 @@ from app.rag.embeddings import embed_query, embed_texts
 from app.rag.vector_store import COLLECTION, ensure_collection, get_client, search
 
 MAX_FACTS_PER_TURN = 3
+MAX_FACT_CHARS = 200  # a "fact" longer than this is a smuggled instruction, not a fact
 RECALL_TOP_K = 4
 RECALL_MIN_SCORE = 0.5
 _JSON_ARRAY = re.compile(r"\[.*\]", re.DOTALL)
@@ -64,7 +65,11 @@ async def extract_and_store(user_id: str, user_msg: str, reply: str) -> int:
         )
         match = _JSON_ARRAY.search(raw)
         facts = json.loads(match.group(0)) if match else []
-        facts = [str(f).strip() for f in facts if str(f).strip()][:MAX_FACTS_PER_TURN]
+        # Single-line + length-capped: extracted facts come from arbitrary user
+        # text and are later placed in system prompts, so they must stay
+        # fact-shaped — never multi-line directive blocks.
+        facts = [" ".join(str(f).split())[:MAX_FACT_CHARS] for f in facts]
+        facts = [f for f in facts if f][:MAX_FACTS_PER_TURN]
         if not facts:
             return 0
         vectors = await embed_texts(facts)

@@ -14,6 +14,8 @@ export type FrameHandler = (frame: ServerFrame) => void
 export function useChatSocket(onFrame: FrameHandler) {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectAttempt = useRef(0)
+  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const closedByCleanup = useRef(false)
   const pendingSends = useRef<string[]>([])
   const onFrameRef = useRef<FrameHandler>(onFrame)
   const [connected, setConnected] = useState(false)
@@ -36,14 +38,19 @@ export function useChatSocket(onFrame: FrameHandler) {
     }
     ws.onclose = () => {
       setConnected(false)
+      // Unmount cleanup closes the socket too — reconnecting then would leak
+      // an orphan authenticated socket per navigation (and per StrictMode
+      // mount cycle in dev).
+      if (closedByCleanup.current) return
       const delay = Math.min(1000 * 2 ** reconnectAttempt.current, MAX_BACKOFF_MS)
       reconnectAttempt.current += 1
-      setTimeout(connect, delay)
+      reconnectTimer.current = setTimeout(connect, delay)
     }
     ws.onerror = () => ws.close()
   }, [])
 
   useEffect(() => {
+    closedByCleanup.current = false
     connect()
     const ping = setInterval(() => {
       if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -51,7 +58,10 @@ export function useChatSocket(onFrame: FrameHandler) {
       }
     }, PING_INTERVAL_MS)
     return () => {
+      closedByCleanup.current = true
       clearInterval(ping)
+      if (reconnectTimer.current !== null) clearTimeout(reconnectTimer.current)
+      reconnectTimer.current = null
       wsRef.current?.close()
       wsRef.current = null
     }

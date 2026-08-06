@@ -37,7 +37,7 @@ def verify_google_id_token(token: str) -> GoogleIdentity:
     if not settings.GOOGLE_CLIENT_ID:
         raise GoogleAuthError("GOOGLE_CLIENT_ID is not configured")
     try:
-        claims = google_id_token.verify_oauth2_token(
+        claims = google_id_token.verify_oauth2_token(  # type: ignore[no-untyped-call]
             token, google_requests.Request(), settings.GOOGLE_CLIENT_ID
         )
     except ValueError as exc:

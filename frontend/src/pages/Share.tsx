@@ -1,7 +1,7 @@
 // Public read-only shared conversation (no auth).
 
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams } from 'react-router'
 import ReactMarkdown from 'react-markdown'
 import { Sparkles } from 'lucide-react'
 import { fetchShared, type SharedChat } from '../api/extras'

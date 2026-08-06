@@ -6,10 +6,12 @@ Redis keys dedupe "already ran today". IST is the reference timezone.
 """
 
 import asyncio
+import contextlib
 import uuid
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime, time, timedelta, timezone
 
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.logging import log
@@ -25,6 +27,7 @@ IST = timezone(timedelta(hours=5, minutes=30))
 TICK_SECONDS = 60
 ALERT_INTERVAL_MIN = 5
 BRIEFING_TITLE = "📅 Daily Briefing"
+DEDUPE_TTL_S = 25 * 3600  # a daily key must outlive its day, not two
 
 
 def _ist_now() -> datetime:
@@ -33,20 +36,30 @@ def _ist_now() -> datetime:
 
 def _market_open(now: datetime) -> bool:
     """Rough NSE hours: Mon-Fri 09:15-15:30 IST."""
-    return now.weekday() < 5 and (9, 15) <= (now.hour, now.minute) <= (15, 30)
+    return now.weekday() < 5 and time(9, 15) <= now.time() <= time(15, 30)
 
 
-async def _already(key: str, ttl_s: int = 90000) -> bool:
+def _parse_hhmm(raw: str) -> time | None:
+    try:
+        hour, minute = raw.split(":")
+        return time(int(hour), int(minute))
+    except (ValueError, AttributeError):
+        return None
+
+
+async def _already(key: str, ttl_s: int = DEDUPE_TTL_S) -> bool:
     """True if `key` fired already (sets it atomically otherwise)."""
     try:
         from app.services.redis_client import get_redis
 
         return not await get_redis().set(key, "1", nx=True, ex=ttl_s)
-    except Exception:  # noqa: BLE001 — fail closed (skip) to avoid duplicates
+    except Exception as exc:  # noqa: BLE001 — fail closed (skip) to avoid duplicates
+        # Loud on purpose: while Redis is down the scheduler sends NOTHING.
+        log.error("scheduler.dedupe_unavailable", key=key, error=str(exc))
         return True
 
 
-async def _briefing_session(db, user_id: uuid.UUID) -> ChatSession:  # type: ignore[no-untyped-def]
+async def _briefing_session(db: AsyncSession, user_id: uuid.UUID) -> ChatSession:
     result = await db.execute(
         select(ChatSession).where(
             ChatSession.user_id == user_id, ChatSession.title == BRIEFING_TITLE
@@ -81,8 +94,6 @@ async def _build_briefing(user_id: uuid.UUID, symbols: list[str]) -> str:
             )
         except Exception:  # noqa: BLE001
             lines.append(f"- **{symbol}** — quote unavailable")
-    import contextlib
-
     with contextlib.suppress(Exception):
         from app.core.web_search import search as web_search
 
@@ -94,8 +105,11 @@ async def _build_briefing(user_id: uuid.UUID, symbols: list[str]) -> str:
 
 
 async def _run_briefings(now: datetime) -> None:
-    target = settings.BRIEFING_TIME_IST
-    if f"{now:%H:%M}" != target:
+    # Fire on the first tick AT OR AFTER the target (the Redis day-key
+    # dedupes) — exact-minute equality silently skipped the whole day
+    # whenever one slow tick drifted past the target minute.
+    target = _parse_hhmm(settings.BRIEFING_TIME_IST)
+    if target is None or now.time() < target:
         return
     async with SessionLocal() as db:
         result = await db.execute(select(WatchlistItem.user_id).distinct())
@@ -133,7 +147,9 @@ async def _run_alerts(now: datetime) -> None:
             if not crossed:
                 continue
             async with SessionLocal() as db:
-                row = await db.get(PriceAlert, alert.id)
+                # Row lock: without FOR UPDATE two overlapping checkers both
+                # read active=True and the user gets the alert twice.
+                row = await db.get(PriceAlert, alert.id, with_for_update=True)
                 if row is None or not row.active:
                     continue
                 row.active = False
@@ -151,12 +167,23 @@ async def _run_alerts(now: datetime) -> None:
 
 
 def _task_due(task: ScheduledTask, now: datetime) -> bool:
+    """Due = at-or-after the scheduled time (day-key dedupe prevents repeats).
+
+    Exact-minute equality plus a per-minute dedupe key meant one slow tick
+    skipped the task for the whole day.
+    """
     parts = task.spec.split("@")
     try:
         if parts[0] == "daily" and len(parts) == 2:
-            return f"{now:%H:%M}" == parts[1]
+            target = _parse_hhmm(parts[1])
+            return target is not None and now.time() >= target
         if parts[0] == "weekly" and len(parts) == 3:
-            return now.weekday() == int(parts[1]) and f"{now:%H:%M}" == parts[2]
+            target = _parse_hhmm(parts[2])
+            return (
+                target is not None
+                and now.weekday() == int(parts[1])
+                and now.time() >= target
+            )
     except ValueError:
         return False
     return False
@@ -167,7 +194,7 @@ async def _run_tasks(now: datetime) -> None:
         result = await db.execute(select(ScheduledTask).where(ScheduledTask.active.is_(True)))
         tasks = list(result.scalars())
     for task in tasks:
-        if not _task_due(task, now) or await _already(f"task:{task.id}:{now:%Y%m%d%H%M}"):
+        if not _task_due(task, now) or await _already(f"task:{task.id}:{now:%Y%m%d}"):
             continue
         try:
             async with SessionLocal() as db:

@@ -130,4 +130,7 @@ register_tool(
         },
     ),
     _research,
+    # planner LLM + up to 4 searches (12s each) + 4 page reads (15s each) +
+    # synthesis — the default 20s cap made this tool structurally un-runnable.
+    timeout_s=120.0,
 )

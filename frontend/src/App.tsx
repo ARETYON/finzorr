@@ -1,5 +1,5 @@
 import { useEffect, type ReactElement } from 'react'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import { Toaster } from 'react-hot-toast'
 import '@fontsource/rajdhani/500.css'
 import '@fontsource/rajdhani/700.css'

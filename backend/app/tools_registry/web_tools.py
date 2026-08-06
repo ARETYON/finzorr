@@ -4,6 +4,7 @@ Fetched content is UNTRUSTED — it is delimiter-wrapped so downstream prompts
 treat it as data, never as instructions (indirect prompt-injection guard).
 """
 
+import asyncio
 import ipaddress
 import socket
 from typing import Any
@@ -46,21 +47,47 @@ def _extract_text(html: str) -> str:
     return text[:_MAX_CHARS]
 
 
-async def _read_url(args: dict[str, Any]) -> str:
-    raw_url = str(args.get("url", "")).strip()
-    parsed = urlparse(raw_url)
+_MAX_REDIRECTS = 5
+
+
+def _url_blocked(url: str) -> str | None:
+    """Validate scheme + resolve the host; returns an error string or None."""
+    parsed = urlparse(url)
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
         return "Error: a valid http(s) URL is required."
     if _is_private_host(parsed.hostname):
         return "Error: that address is not reachable."
+    return None
+
+
+async def _read_url(args: dict[str, Any]) -> str:
+    raw_url = str(args.get("url", "")).strip()
+    if error := _url_blocked(raw_url):
+        return error
+    # Redirects are followed manually: with follow_redirects=True a public
+    # page could 302 to 169.254.169.254 / localhost and the private-host
+    # guard (which only checked the ORIGINAL hostname) would never see it.
     async with httpx.AsyncClient(
-        timeout=_TIMEOUT_S, headers={"User-Agent": _UA}, follow_redirects=True
+        timeout=_TIMEOUT_S, headers={"User-Agent": _UA}, follow_redirects=False
     ) as client:
-        response = await client.get(raw_url)
+        url = raw_url
+        for _hop in range(_MAX_REDIRECTS + 1):
+            response = await client.get(url)
+            if not response.is_redirect:
+                break
+            url = str(response.next_request.url) if response.next_request else ""
+            if not url:
+                return "Error: the page redirected nowhere readable."
+            if error := _url_blocked(url):
+                return error
+        else:
+            return "Error: too many redirects."
         response.raise_for_status()
         if "text/html" not in response.headers.get("content-type", "text/html"):
             return "Error: only HTML pages can be read."
-        text = _extract_text(response.text)
+        # lxml over a full page is CPU-bound — off the event loop, or four
+        # concurrent deep-research parses stall every user's stream.
+        text = await asyncio.to_thread(_extract_text, response.text)
     if not text:
         return "Error: the page contained no readable text."
     return (

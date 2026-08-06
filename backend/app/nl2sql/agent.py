@@ -14,7 +14,6 @@ from app.core.logging import log
 from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
 from app.nl2sql.executor import (
     ExecutionResult,
-    SQLValidationError,
     extract_sql,
     validate,
 )
@@ -75,25 +74,28 @@ def rows_preview(result: ExecutionResult) -> list[dict[str, Any]]:
 
 
 async def run_query(question: str) -> NL2SQLResult:
-    """Generate + validate + execute with one error-fed retry."""
+    """Generate + validate + execute with one error-fed retry. Never raises."""
     error_hint = ""
     last_sql = ""
+    error = "no attempt completed"
     for attempt in range(1, MAX_ATTEMPTS + 1):
-        prompt = render_agent_prompt(
-            "nl2sql_generator", schema=schema_summary(), error_hint=error_hint
-        )
-        raw = await complete(
-            [SystemMessage(content=prompt), UserMessage(content=question)],
-            temperature=0.1,
-            max_tokens=512,
-        )
-        last_sql = extract_sql(raw)
         try:
+            # Generation sits INSIDE the try: an LLM outage must degrade to
+            # success=False like every other failure, not escape the node.
+            prompt = render_agent_prompt(
+                "nl2sql_generator", schema=schema_summary(), error_hint=error_hint
+            )
+            raw = await complete(
+                [SystemMessage(content=prompt), UserMessage(content=question)],
+                temperature=0.1,
+                max_tokens=512,
+            )
+            last_sql = extract_sql(raw)
             validated = validate(last_sql)
             result = await execute_sql(validated)
             log.info("nl2sql.success", attempt=attempt, rows=len(result.rows))
             return NL2SQLResult(success=True, sql=validated, result=result, attempts=attempt)
-        except (SQLValidationError, Exception) as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 — includes SQLValidationError
             error = f"{type(exc).__name__}: {exc}"
             log.warning("nl2sql.attempt_failed", attempt=attempt, error=error)
             error_hint = (

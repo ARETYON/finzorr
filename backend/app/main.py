@@ -68,6 +68,12 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     yield
     if scheduler_task is not None:
         scheduler_task.cancel()
+    try:
+        from app.graph.graph import close_graph
+
+        await close_graph()
+    except Exception as exc:  # noqa: BLE001 — shutdown must not raise
+        log.warning("shutdown.graph_close_failed", error=str(exc))
     log.info("app.shutdown")
 
 

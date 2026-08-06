@@ -32,7 +32,7 @@ async def embed_texts(texts: list[str]) -> list[list[float]]:
         raise EmbeddingError(f"embedding request failed: {exc}") from exc
     if len(embeddings) != len(texts):
         raise EmbeddingError(f"expected {len(texts)} embeddings, got {len(embeddings)}")
-    return embeddings
+    return [[float(x) for x in vector] for vector in embeddings]
 
 
 async def embed_query(text: str) -> list[float]:

@@ -78,6 +78,11 @@ async def _get_history(args: dict[str, Any]) -> str:
         HISTORY_TTL_S,
         lambda: _history_list(symbol, period),
     )
+    if not points:
+        return (
+            f"Error: no price history found for '{symbol}' over '{period}' — "
+            "check the symbol (try search_symbol) or use a different period."
+        )
     # summarize to first/last/min/max so the LLM isn't flooded with rows
     closes = [p["close"] for p in points]
     summary = {

@@ -6,7 +6,6 @@ delta. DB failures are logged but never fail the turn (the user already has
 their streamed answer).
 """
 
-import asyncio
 import uuid
 
 from sqlalchemy import func, select
@@ -15,6 +14,7 @@ from app.ai.base import UserMessage as AiUserMessage
 from app.ai.completion import complete
 from app.core.logging import log
 from app.core.prompt_registry import render_agent_prompt
+from app.core.tasks import spawn
 from app.db.session import SessionLocal
 from app.graph.state import AssistantState
 from app.models.chat_session import ChatSession
@@ -74,7 +74,7 @@ async def persist_node(state: AssistantState) -> AssistantState:
             )
             await db.commit()
         if count is not None and count <= 2:  # first turn just landed
-            _task = asyncio.create_task(_auto_title(session_uuid, user_msg))  # noqa: RUF006
+            spawn(_auto_title(session_uuid, user_msg), name="chat.auto_title")
     except Exception as exc:  # noqa: BLE001 — never fail the turn on persistence
         log.error("node.persist.error", error=str(exc))
     return {

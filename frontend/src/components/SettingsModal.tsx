@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Trash2, X } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { API_BASE } from '../api/client'
 import { deleteMemory, listMemories, updateMe, type MemoryFact } from '../api/auth'
 import { createPersona, deletePersona, listPersonas, type PersonaInfo } from '../api/extras'
 import { useAuthStore } from '../store/authStore'
@@ -160,7 +161,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
         <div className="mt-4">
           <span className="mb-1 block text-xs font-medium text-ink-mid">Integrations</span>
           <a
-            href="/api/integrations/google/authorize"
+            href={`${API_BASE}/api/integrations/google/authorize`}
             className="clip-btn inline-block rounded-lg border border-line-strong px-3 py-1.5 text-xs font-medium text-ink-mid hover:bg-surface"
           >
             Connect Google (Gmail + Calendar, read-only)

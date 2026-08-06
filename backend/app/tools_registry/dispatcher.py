@@ -15,15 +15,24 @@ from app.core.logging import log
 
 ToolHandler = Callable[[dict[str, Any]], Awaitable[str]]
 
-_TOOL_TIMEOUT_S = 20.0
+_DEFAULT_TIMEOUT_S = 20.0
 _definitions: dict[str, ToolDefinition] = {}
 _handlers: dict[str, ToolHandler] = {}
+_timeouts: dict[str, float] = {}
 
 
-def register_tool(definition: ToolDefinition, handler: ToolHandler) -> None:
-    """Register one tool (schema + async handler returning a string)."""
+def register_tool(
+    definition: ToolDefinition, handler: ToolHandler, *, timeout_s: float = _DEFAULT_TIMEOUT_S
+) -> None:
+    """Register one tool (schema + async handler returning a string).
+
+    Slow tools (deep research, image generation, sandboxed code) declare their
+    own budget here — a single global cap silently killed every tool whose
+    honest runtime exceeded 20s.
+    """
     _definitions[definition.name] = definition
     _handlers[definition.name] = handler
+    _timeouts[definition.name] = timeout_s
 
 
 def all_tools() -> list[ToolDefinition]:
@@ -35,8 +44,9 @@ async def dispatch(name: str, arguments: dict[str, Any]) -> str:
     handler = _handlers.get(name)
     if handler is None:
         return f"Error: unknown tool '{name}'."
+    timeout_s = _timeouts.get(name, _DEFAULT_TIMEOUT_S)
     try:
-        return await asyncio.wait_for(handler(arguments), timeout=_TOOL_TIMEOUT_S)
+        return await asyncio.wait_for(handler(arguments), timeout=timeout_s)
     except TimeoutError:
         log.warning("tool.timeout", tool=name)
         return f"Error: tool '{name}' timed out."

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Check, LogOut, MessageSquare, Pencil, Plus, Settings, Trash2, X } from 'lucide-react'
 import clsx from 'clsx'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 import SettingsModal from '../SettingsModal'
 import ThemeToggle from '../ThemeToggle'
 import { useAuthStore } from '../../store/authStore'

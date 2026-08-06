@@ -34,7 +34,8 @@ async def _fetch_one(symbol: str, sem: asyncio.Semaphore) -> dict[str, object] |
                 "exchange": q.exchange,
                 "sector": o.sector,
                 "industry": o.industry,
-                "market_cap": o.market_cap,
+                # BigInteger columns — yfinance sometimes returns floats
+                "market_cap": int(o.market_cap) if o.market_cap is not None else None,
                 "pe_ratio": o.pe_ratio,
                 "pb_ratio": o.pb_ratio,
                 "dividend_yield": o.dividend_yield,
@@ -43,7 +44,7 @@ async def _fetch_one(symbol: str, sem: asyncio.Semaphore) -> dict[str, object] |
                 "week52_high": o.week52_high,
                 "week52_low": o.week52_low,
                 "current_price": q.price,
-                "volume": q.volume,
+                "volume": int(q.volume) if q.volume is not None else None,
                 "updated_at": utcnow(),
             }
         except Exception as exc:  # noqa: BLE001 — per-symbol isolation

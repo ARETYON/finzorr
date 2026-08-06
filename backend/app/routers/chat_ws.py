@@ -43,6 +43,19 @@ def _origin_allowed(websocket: WebSocket) -> bool:
     return origin == settings.FRONTEND_ORIGIN or (settings.is_dev and not origin)
 
 
+async def _persist_partial(session_id: uuid.UUID, user_msg: str, partial: str) -> None:
+    """Persist a cancelled turn so it survives a refresh (best-effort)."""
+    from app.graph.nodes.persist import persist_node
+
+    text = f"{partial}\n\n_(stopped by user)_" if partial.strip() else "_(stopped by user)_"
+    try:
+        await persist_node(
+            {"session_id": str(session_id), "user_msg": user_msg, "final_text": text}
+        )
+    except Exception as exc:  # noqa: BLE001 — cancellation cleanup must not raise
+        log.warning("ws.cancel.persist_failed", error=str(exc))
+
+
 async def _owned_session_id(user: User, raw: str) -> uuid.UUID | None:
     try:
         session_id = uuid.UUID(raw)
@@ -96,13 +109,24 @@ class _Connection:
         self, session_id: uuid.UUID, user_msg: str, attachments: list[str]
     ) -> None:
         sid = str(session_id)
-        set_callback(sid, self.send)
+        # Mirror streamed tokens server-side so a cancelled turn can persist
+        # what the user actually saw — cancellation unwinds past persist_node,
+        # which otherwise loses both sides of the turn on refresh.
+        partial: list[str] = []
+
+        async def _send_and_record(frame: dict[str, Any]) -> None:
+            if frame.get("type") == "token":
+                partial.append(str(frame.get("delta", "")))
+            await self.send(frame)
+
+        set_callback(sid, _send_and_record)
         try:
             response = await run_turn(
                 session_id, self.user.id, self.user.name, user_msg, attachments or None
             )
             await self.send(response)
         except asyncio.CancelledError:
+            await asyncio.shield(_persist_partial(session_id, user_msg, "".join(partial)))
             await self.send({"type": "stopped"})
         except Exception as exc:  # noqa: BLE001 — degrade, keep the socket alive
             log.error("ws.turn.error", error=str(exc))

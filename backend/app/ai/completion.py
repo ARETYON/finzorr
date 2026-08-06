@@ -107,6 +107,15 @@ async def stream(
     if await _budget_exceeded(primary) and settings.LLM_FALLBACK_PROVIDER:
         log.warning("ai.budget.exceeded", provider=primary)
         primary = settings.LLM_FALLBACK_PROVIDER
+
+    emitted = False
+
+    async def _counting_on_token(text: str) -> None:
+        nonlocal emitted
+        emitted = True
+        if on_token is not None:
+            await on_token(text)
+
     try:
         return await _run_stream(
             primary,
@@ -116,13 +125,17 @@ async def stream(
             temperature=temperature,
             max_tokens=max_tokens,
             response_format=response_format,
-            on_token=on_token,
+            on_token=_counting_on_token if on_token is not None else None,
         )
     except Exception as exc:
         fallback = settings.LLM_FALLBACK_PROVIDER
         if not fallback or fallback == primary:
             raise
         log.warning("ai.retry_fallback", failed=primary, fallback=fallback, error=str(exc))
+        # If the primary already streamed partial text to the client, don't
+        # stream the retry too — the user would watch the answer restart from
+        # word one appended to the partial. The final `response` frame replaces
+        # the streamed bubble with the fallback's complete text.
         return await _run_stream(
             fallback,
             messages,
@@ -131,7 +144,7 @@ async def stream(
             temperature=temperature,
             max_tokens=max_tokens,
             response_format=response_format,
-            on_token=on_token,
+            on_token=None if emitted else on_token,
         )
 
 

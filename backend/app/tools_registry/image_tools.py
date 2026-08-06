@@ -59,5 +59,6 @@ def register_image_tools() -> int:
             },
         ),
         _generate,
+        timeout_s=75.0,  # image APIs are slow; the handler's own cap is 60s
     )
     return 1

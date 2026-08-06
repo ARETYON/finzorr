@@ -1,12 +1,17 @@
 """The assistant graph: supervisor -> one specialist -> persist.
 
 Checkpointer: AsyncPostgresSaver keyed by thread_id=session_id (conversation
-context survives restarts). Its `.setup()` runs once lazily — a distinct
-bootstrap from Alembic. If checkpointer init fails the graph compiles without
-one and history degrades to a DB reload per turn instead of crashing.
+context survives restarts). It runs over an AsyncConnectionPool — a single
+AsyncConnection would serialize every user's checkpoint I/O behind one lock
+and, if Postgres dropped it, fail permanently until restart. The pool checks
+connections on checkout and reconnects on its own. `.setup()` runs once lazily
+— a distinct bootstrap from Alembic. If checkpointer init fails the graph
+compiles without one and history degrades to a DB reload per turn instead of
+crashing.
 """
 
 import asyncio
+from collections.abc import Hashable
 from typing import Any
 
 from langgraph.graph import END, START, StateGraph
@@ -23,14 +28,19 @@ from app.graph.nodes.web_search import web_search_node
 from app.graph.state import AssistantState
 from app.graph.supervisor import ROUTES, plan_and_route, route_selector
 
-BRANCHES: dict[str, str] = {route: route for route in ROUTES}
+BRANCHES: dict[Hashable, str] = {route: route for route in ROUTES}
 
 _graph: Any = None
 _has_checkpointer = False
+_pool: Any = None
 _lock = asyncio.Lock()
 
+# Small pool: checkpoint I/O is short-lived; the dev/prod VM is deliberately
+# tiny, so cap connections rather than scale with users.
+_POOL_MIN, _POOL_MAX = 1, 4
 
-def build_graph() -> StateGraph:
+
+def build_graph() -> StateGraph[AssistantState]:
     """Wire nodes and edges (uncompiled — tests introspect this)."""
     builder = StateGraph(AssistantState)
     builder.add_node("supervisor", plan_and_route)
@@ -56,7 +66,7 @@ def _pg_dsn() -> str:
 
 async def get_graph() -> tuple[Any, bool]:
     """Compiled-graph singleton; returns (graph, has_checkpointer)."""
-    global _graph, _has_checkpointer  # noqa: PLW0603
+    global _graph, _has_checkpointer, _pool  # noqa: PLW0603
     if _graph is not None:
         return _graph, _has_checkpointer
     async with _lock:
@@ -65,16 +75,40 @@ async def get_graph() -> tuple[Any, bool]:
         builder = build_graph()
         try:
             from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-            from psycopg import AsyncConnection
+            from psycopg.rows import dict_row
+            from psycopg_pool import AsyncConnectionPool
 
-            conn = await AsyncConnection.connect(_pg_dsn(), autocommit=True)
-            checkpointer = AsyncPostgresSaver(conn)  # type: ignore[arg-type]
+            _pool = AsyncConnectionPool(
+                _pg_dsn(),
+                min_size=_POOL_MIN,
+                max_size=_POOL_MAX,
+                open=False,
+                check=AsyncConnectionPool.check_connection,
+                kwargs={
+                    "autocommit": True,
+                    "prepare_threshold": 0,
+                    "row_factory": dict_row,
+                },
+            )
+            await _pool.open(wait=True, timeout=10)
+            checkpointer = AsyncPostgresSaver(_pool)
             await checkpointer.setup()
             _graph = builder.compile(checkpointer=checkpointer)
             _has_checkpointer = True
-            log.info("graph.compiled", checkpointer="postgres")
+            log.info("graph.compiled", checkpointer="postgres-pool", pool_max=_POOL_MAX)
         except Exception as exc:  # noqa: BLE001 — degrade to stateless
             log.warning("graph.checkpointer.unavailable", error=str(exc))
             _graph = builder.compile()
             _has_checkpointer = False
         return _graph, _has_checkpointer
+
+
+async def close_graph() -> None:
+    """Release the checkpointer pool on shutdown (no-op when degraded)."""
+    global _graph, _has_checkpointer, _pool  # noqa: PLW0603
+    if _pool is not None:
+        try:
+            await _pool.close()
+        except Exception as exc:  # noqa: BLE001 — shutdown must not raise
+            log.warning("graph.pool.close_failed", error=str(exc))
+    _graph, _has_checkpointer, _pool = None, False, None
