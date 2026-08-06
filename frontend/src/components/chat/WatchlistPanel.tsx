@@ -51,14 +51,14 @@ export default function WatchlistPanel({ refreshKey }: { refreshKey: number }) {
   }
 
   return (
-    <div className="border-t border-slate-200 p-3">
+    <div className="border-t border-line p-3">
       <div className="mb-2 flex items-center justify-between">
-        <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
+        <span className="flex items-center gap-1.5 text-xs font-semibold text-ink-dim">
           <ListChecks size={13} /> Watchlist
         </span>
         <button
           onClick={() => setAdding(!adding)}
-          className="text-slate-400 hover:text-brand-600"
+          className="text-ink-faint hover:text-accent-strong"
           aria-label="Add symbol"
         >
           <Plus size={14} />
@@ -71,25 +71,25 @@ export default function WatchlistPanel({ refreshKey }: { refreshKey: number }) {
             onChange={(e) => setSymbol(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && void add()}
             placeholder="e.g. INFY"
-            className="w-full rounded border border-slate-300 px-2 py-1 text-xs uppercase"
+            className="w-full rounded border border-line-strong bg-panel px-2 py-1 text-xs uppercase text-ink"
             autoFocus
           />
-          <button onClick={() => void add()} className="text-xs text-brand-600 font-medium">
+          <button onClick={() => void add()} className="text-xs font-medium text-accent-strong">
             Add
           </button>
         </div>
       )}
       <div className="flex flex-wrap gap-1.5">
-        {items.length === 0 && <span className="text-[11px] text-slate-400">Empty — try “add TCS to my watchlist”</span>}
+        {items.length === 0 && <span className="text-[11px] text-ink-faint">Empty — try “add TCS to my watchlist”</span>}
         {items.map((w) => (
           <span
             key={w.symbol}
-            className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600"
+            className="inline-flex items-center gap-1 fui-mono rounded-full bg-chip px-2 py-0.5 text-[11px] font-medium text-ink-mid"
           >
             {w.symbol}
             <button
               onClick={() => void remove(w.symbol)}
-              className="text-slate-400 hover:text-rose-600"
+              className="text-ink-faint hover:text-danger"
               aria-label={`Remove ${w.symbol}`}
             >
               <X size={10} />

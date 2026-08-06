@@ -92,23 +92,33 @@ export default function Chat() {
     sendChat(sessionId, text)
   }
 
+  const activeTitle = sessions.find((s) => s.id === activeSessionId)?.title ?? 'finzorr.ai'
+
   return (
     <div className="flex h-full">
       <ChatSidebar watchlistRefreshKey={watchlistRefreshKey} />
       <main className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-2.5">
-          <h1 className="text-sm font-semibold text-slate-700">
-            {sessions.find((s) => s.id === activeSessionId)?.title ?? 'finzorr.ai'}
-          </h1>
-          <span
-            className={`h-2 w-2 rounded-full ${connected ? 'bg-emerald-500' : 'bg-amber-400'}`}
-            title={connected ? 'Connected' : 'Reconnecting…'}
-          />
+        <header className="flex items-center justify-between border-b border-line bg-panel px-4 py-2.5">
+          <div className="flex items-center gap-3">
+            <h1 className="app-title fui-glow max-w-md truncate text-sm font-semibold text-ink-strong">
+              {activeTitle}
+            </h1>
+            <span className="fui-label">dossier · active thread</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="fui-only fui-mono items-center gap-2 text-[10px] tracking-[0.2em] text-ink-faint">
+              LINK 01 · {connected ? 'SECURE' : 'RELINK'}
+            </span>
+            <span
+              className={`status-dot h-2 w-2 rounded-full ${connected ? 'bg-ok' : 'bg-warn'}`}
+              title={connected ? 'Connected' : 'Reconnecting…'}
+            />
+          </div>
         </header>
         <div className="flex-1 overflow-y-auto px-4 py-4">
           <div className="mx-auto max-w-3xl space-y-4">
             {messages.length === 0 && !thinking && (
-              <div className="pt-16 text-center text-sm text-slate-400">
+              <div className="pt-16 text-center text-sm text-ink-faint">
                 Ask about a stock, screen the market, or just chat.
               </div>
             )}
@@ -117,7 +127,7 @@ export default function Chat() {
             ))}
             {thinking && (
               <div className="flex justify-start">
-                <div className="animate-pulse rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-400">
+                <div className="msg-assistant clip-panel animate-pulse rounded-2xl border border-line bg-panel px-4 py-2.5 text-sm text-ink-faint">
                   Thinking…
                 </div>
               </div>

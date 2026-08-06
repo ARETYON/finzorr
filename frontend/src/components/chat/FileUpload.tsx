@@ -60,15 +60,15 @@ export default function FileUpload() {
   }
 
   return (
-    <div className="border-t border-slate-200 p-3">
+    <div className="border-t border-line p-3">
       <div className="mb-2 flex items-center justify-between">
-        <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
+        <span className="flex items-center gap-1.5 text-xs font-semibold text-ink-dim">
           <FileText size={13} /> Documents
         </span>
         <button
           onClick={() => inputRef.current?.click()}
           disabled={busy}
-          className="text-slate-400 hover:text-brand-600 disabled:opacity-50"
+          className="text-ink-faint hover:text-accent-strong disabled:opacity-50"
           aria-label="Upload PDF"
         >
           {busy ? <Loader2 size={14} className="animate-spin" /> : <Paperclip size={14} />}
@@ -83,20 +83,20 @@ export default function FileUpload() {
       </div>
       <ul className="space-y-1">
         {docs.length === 0 && (
-          <li className="text-[11px] text-slate-400">Upload a PDF, then ask about it in chat.</li>
+          <li className="text-[11px] text-ink-faint">Upload a PDF, then ask about it in chat.</li>
         )}
         {docs.map((d) => (
-          <li key={d.id} className="group flex items-center gap-1.5 text-[11px] text-slate-600">
-            <FileText size={11} className="shrink-0 text-slate-400" />
+          <li key={d.id} className="group flex items-center gap-1.5 text-[11px] text-ink-mid">
+            <FileText size={11} className="shrink-0 text-ink-faint" />
             <span className="truncate" title={d.filename}>
               {d.filename}
             </span>
-            <span className={d.status === 'ready' ? 'text-emerald-500' : 'text-amber-500'}>
+            <span className={d.status === 'ready' ? 'text-ok' : 'text-warn'}>
               {d.status}
             </span>
             <button
               onClick={() => void remove(d.id)}
-              className="ml-auto hidden text-slate-400 hover:text-rose-600 group-hover:block"
+              className="ml-auto hidden text-ink-faint hover:text-danger group-hover:block"
               aria-label={`Delete ${d.filename}`}
             >
               <Trash2 size={11} />

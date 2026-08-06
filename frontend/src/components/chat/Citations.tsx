@@ -9,21 +9,21 @@ export default function Citations({ citations }: { citations: Citation[] }) {
     <div className="mt-2 text-xs">
       <button
         onClick={() => setOpen(!open)}
-        className="inline-flex items-center gap-1 text-slate-500 hover:text-slate-700"
+        className="fui-mono inline-flex items-center gap-1 text-ink-dim hover:text-ink-mid"
       >
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         {citations.length} source{citations.length > 1 ? 's' : ''}
       </button>
       {open && (
-        <ul className="mt-1 space-y-1 border-l-2 border-slate-200 pl-3">
+        <ul className="mt-1 space-y-1 border-l-2 border-line pl-3">
           {citations.map((c, i) => (
-            <li key={i} className="text-slate-500">
+            <li key={i} className="text-ink-dim">
               {c.url ? (
                 <a
                   href={c.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-brand-600 hover:underline"
+                  className="inline-flex items-center gap-1 text-accent-strong hover:underline"
                 >
                   <LinkIcon size={10} />
                   {c.title || c.url}
@@ -31,7 +31,7 @@ export default function Citations({ citations }: { citations: Citation[] }) {
               ) : (
                 <span className="font-medium">{c.marker || c.title}</span>
               )}
-              {c.snippet && <p className="mt-0.5 line-clamp-2 text-slate-400">{c.snippet}</p>}
+              {c.snippet && <p className="mt-0.5 line-clamp-2 text-ink-faint">{c.snippet}</p>}
             </li>
           ))}
         </ul>
