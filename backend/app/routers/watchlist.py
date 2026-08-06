@@ -7,7 +7,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
-from app.core.pagination import Page, page_params
+from app.core.pagination import BARE_LIST_DESCRIPTION, Page, page_params
 from app.db.session import get_db
 from app.models.user import User
 from app.models.watchlist_item import WatchlistItem
@@ -21,7 +21,7 @@ class WatchlistAddIn(BaseModel):
     exchange: str = Field(default="NSE", pattern="^(NSE|BSE)$")
 
 
-@router.get("", response_model=list[WatchlistItemOut])
+@router.get("", response_model=list[WatchlistItemOut], description=BARE_LIST_DESCRIPTION)
 async def list_watchlist(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),

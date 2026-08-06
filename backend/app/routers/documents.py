@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import get_current_user
 from app.core.config import settings
 from app.core.logging import log
-from app.core.pagination import Page, page_params
+from app.core.pagination import BARE_LIST_DESCRIPTION, Page, page_params
 from app.core.rate_limit import check_rate_limit
 from app.db.session import get_db
 from app.documents.ingest import (
@@ -107,7 +107,7 @@ async def upload_document(
     return DocumentUploadOut(id=doc.id, status=doc.status, chunks=doc.chunk_count or 0)
 
 
-@router.get("", response_model=list[DocumentOut])
+@router.get("", response_model=list[DocumentOut], description=BARE_LIST_DESCRIPTION)
 async def list_documents(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),

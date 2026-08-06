@@ -8,6 +8,7 @@ from app.auth.google_oauth import GoogleAuthError, verify_google_id_token
 from app.auth.jwt_session import SESSION_COOKIE, cookie_kwargs, create_session_jwt
 from app.core.config import settings
 from app.core.logging import log
+from app.core.pagination import BARE_LIST_DESCRIPTION
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.auth import GoogleLoginIn, UserOut, UserUpdateIn
@@ -85,7 +86,7 @@ async def me(user: User = Depends(get_current_user)) -> User:
     return user
 
 
-@router.get("/memories", response_model=list[MemoryFactOut])
+@router.get("/memories", response_model=list[MemoryFactOut], description=BARE_LIST_DESCRIPTION)
 async def list_memories(user: User = Depends(get_current_user)) -> list[MemoryFactOut]:
     """The user's stored long-term memory facts."""
     from app.memory.facts import list_facts

@@ -21,3 +21,13 @@ def page_params(
     offset: int = Query(0, ge=0, description="rows to skip"),
 ) -> Page:
     return Page(limit=limit, offset=offset)
+
+
+# OpenAPI note for the small bounded per-user collections: the cursor
+# envelope is deliberately limited to the chat hot lists on /api/v1.
+BARE_LIST_DESCRIPTION = (
+    "Returns a bare JSON array by design: this is a small bounded per-user "
+    "collection, not a growing feed. The {items, next_cursor, total} cursor "
+    "envelope is deliberately limited to the chat hot lists "
+    "(sessions, messages) on /api/v1."
+)

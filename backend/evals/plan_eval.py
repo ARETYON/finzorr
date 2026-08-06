@@ -23,8 +23,11 @@ def run_offline() -> int:
     from app.graph.supervisor import PARALLELIZABLE, validate_plan
 
     failures: list[str] = []
+    checks_run = 0
 
     def check(name: str, condition: bool) -> None:
+        nonlocal checks_run
+        checks_run += 1
         if not condition:
             failures.append(name)
 
@@ -40,6 +43,26 @@ def run_offline() -> int:
     check("tools-not-parallel", "tools" not in PARALLELIZABLE)
     check("research-not-parallel", "research" not in PARALLELIZABLE)
     check("memory-not-parallel", "memory" not in PARALLELIZABLE)
+
+    # --- parallel dependency guard (lexical; anchored markers only)
+    from app.graph.supervisor import _steps_look_dependent
+
+    dependent = [
+        {"route": "web_search", "task": "find RIL news"},
+        {"route": "general_chat", "task": "summarise the result in one line"},
+    ]
+    referential = [
+        {"route": "nl2sql", "task": "screen low-PE banks"},
+        {"route": "general_chat", "task": "explain the above for a beginner"},
+    ]
+    screener = [
+        {"route": "nl2sql", "task": "stocks with market cap above 500cr"},
+        {"route": "web_search", "task": "RIL previous close and day change"},
+    ]
+    check("dependent-demoted", _steps_look_dependent(dependent) is True)
+    check("referential-demoted", _steps_look_dependent(referential) is True)
+    check("screener-not-demoted", _steps_look_dependent(screener) is False)
+    check("first-step-exempt", _steps_look_dependent([dependent[1]]) is False)
 
     # --- after_step decision table
     from app.graph.state import AssistantState
@@ -95,20 +118,48 @@ def run_offline() -> int:
         check(f"reset-{key}", not armed.get(key))
     check("step-recorded-chart", armed["step_outputs"][0]["chart"] == {"symbol": "TCS"})
 
-    total = 20
+    # computed, not hardcoded — a new check must never silently skew the count
+    total = checks_run
     print(f"plan mechanics: {total - len(failures)}/{total} checks passed")
     for failure in failures:
         print(f"  FAIL {failure}")
     return 1 if failures else 0
 
 
+# 15 prompts across three rubrics: single-step-when-simple (a planner that
+# decomposes trivia is worse than a classifier), decomposition order (later
+# steps must be able to consume earlier outputs), and parallel independence
+# (fan out only when steps share nothing). Replanning is deliberately NOT a
+# live rubric — this harness only calls plan_and_route, so a judge never
+# sees a replan; that surface is covered by the offline mechanics above and
+# the compiled-graph e2e test.
 JUDGE_PROMPTS = [
+    # --- single-step-when-simple
     ("What is the price of TCS?", "expect single step"),
-    ("Find the latest news on Infosys and then show its current price", "expect 2 ordered steps"),
-    ("Compare the latest RBI news with a screener of low-P/E banks", "independent -> parallel ok"),
     ("Hi!", "expect single general_chat step"),
+    ("What does P/E ratio mean?", "expect single step (rag or general_chat)"),
+    ("Add Infosys to my watchlist", "expect single memory step"),
+    ("Show me a chart of Reliance for 6 months", "expect single tools step"),
+    # --- decomposition order (later steps consume earlier outputs)
+    ("Find the latest news on Infosys and then show its current price", "expect 2 ordered steps"),
     ("Do deep research on EV adoption and then alert me if Tata Motors drops below 900",
      "research then memory, ordered"),
+    ("Screen banks with P/E under 12, then summarise the top result's recent news",
+     "nl2sql before web_search; second step depends on the first"),
+    ("Look up what 'book value' means and use it to explain whether SBI looks cheap",
+     "definition first, application second, ordered"),
+    ("Get HDFC Bank's fundamentals and then compare them with its latest quarterly news",
+     "ordered: numbers first, news comparison second"),
+    # --- parallel independence (fan out ONLY when steps share nothing)
+    ("Compare the latest RBI news with a screener of low-P/E banks", "independent -> parallel ok"),
+    ("Two things: latest news on Reliance, and separately explain what NIFTY 50 is",
+     "independent -> parallel ok"),
+    ("What's the TCS share price today, and also what IT stocks have dividend yield above 3%?",
+     "independent -> parallel ok"),
+    ("Find Wipro's latest results and summarise what they mean for the stock",
+     "DEPENDENT steps -> must NOT be parallel"),
+    ("Search for Adani Ports news and then screen ports companies based on that result",
+     "second step references the first -> sequential required"),
 ]
 
 

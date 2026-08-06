@@ -48,3 +48,90 @@ def test_keyword_route(message: str, expected: str) -> None:
 def test_keyword_route_always_returns_valid_route() -> None:
     for message in ("", "asdf qwerty", "🙂", "SELECT * FROM x"):
         assert keyword_route(message) in ROUTES
+
+
+# ---------------------------------------------------------- dependency guard
+
+
+class TestParallelDependencyGuard:
+    """Route class alone can't see dependence — anchored referential markers
+    in a later step demote parallel to sequential (parallel branches get no
+    feed-forward). Anchoring matters: screener language must never demote."""
+
+    def test_referential_later_step_is_dependent(self) -> None:
+        from app.graph.supervisor import _steps_look_dependent
+
+        assert _steps_look_dependent(
+            [
+                {"route": "web_search", "task": "find RIL news"},
+                {"route": "general_chat", "task": "summarise the result briefly"},
+            ]
+        )
+        assert _steps_look_dependent(
+            [
+                {"route": "nl2sql", "task": "screen banks"},
+                {"route": "general_chat", "task": "explain the above simply"},
+            ]
+        )
+        assert _steps_look_dependent(
+            [
+                {"route": "rag", "task": "define P/E"},
+                {"route": "web_search", "task": "use its output to find examples"},
+            ]
+        )
+
+    def test_screener_language_never_demotes(self) -> None:
+        from app.graph.supervisor import _steps_look_dependent
+
+        assert not _steps_look_dependent(
+            [
+                {"route": "nl2sql", "task": "stocks with market cap above 500cr"},
+                {"route": "nl2sql", "task": "banks with dividend yield above 5%"},
+            ]
+        )
+        assert not _steps_look_dependent(
+            [
+                {"route": "web_search", "task": "TCS previous close"},
+                {"route": "web_search", "task": "screen based on P/E under 15"},
+            ]
+        )
+
+    def test_first_step_is_exempt(self) -> None:
+        from app.graph.supervisor import _steps_look_dependent
+
+        assert not _steps_look_dependent(
+            [{"route": "general_chat", "task": "summarise the result of the match"}]
+        )
+
+
+async def test_plan_acceptance_demotes_dependent_parallel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A supervisor decision marked parallel:true with a referential second
+    step must come out plan_parallel=False through the REAL plan_and_route."""
+    from typing import Any
+
+    from app.graph import supervisor as sup
+
+    async def scripted(*_a: Any, **_k: Any) -> str:
+        return (
+            '{"plan": [{"route": "web_search", "task": "find RIL news"},'
+            ' {"route": "general_chat", "task": "summarise the result"}],'
+            ' "parallel": true, "reason": "r"}'
+        )
+
+    monkeypatch.setattr(sup, "complete", scripted)
+    out = await sup.plan_and_route({"user_msg": "news then summary"})
+    assert out["plan_parallel"] is False
+    assert len(out["plan_steps"]) == 2  # steps intact, just sequential
+
+    async def independent(*_a: Any, **_k: Any) -> str:
+        return (
+            '{"plan": [{"route": "web_search", "task": "find RIL news"},'
+            ' {"route": "nl2sql", "task": "screen caps above 500cr"}],'
+            ' "parallel": true, "reason": "r"}'
+        )
+
+    monkeypatch.setattr(sup, "complete", independent)
+    out2 = await sup.plan_and_route({"user_msg": "two things"})
+    assert out2["plan_parallel"] is True  # anchored guard spares screeners

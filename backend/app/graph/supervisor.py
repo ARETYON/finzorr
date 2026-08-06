@@ -96,6 +96,26 @@ MAX_PLAN_STEPS = 3
 # are excluded by construction
 PARALLELIZABLE: frozenset[str] = frozenset({"general_chat", "web_search", "nl2sql", "rag"})
 
+# Referential markers that reveal a later step depends on an earlier one.
+# ANCHORED phrases only: bare "above"/"previous"/"based on" collide with
+# screener language ("market cap above 500cr", "previous close") and would
+# demote legitimately parallel plans. Lexical, not semantic — the honest
+# limit is recorded in §20 (semantic detection would cost an LLM pass per
+# turn, deliberately not spent).
+_DEPENDENT_TASK = re.compile(
+    r"(the above|mentioned above|previous (step|result|output)|that result"
+    r"|the result|based on (that|the (result|output|previous))|step \d"
+    r"|its output)",
+    re.IGNORECASE,
+)
+
+
+def _steps_look_dependent(steps: list[dict[str, str]]) -> bool:
+    """True when any step BEYOND the first references earlier work — such a
+    plan must run sequentially so feed-forward can supply that reference
+    (parallel branches see no step_context)."""
+    return any(_DEPENDENT_TASK.search(s.get("task", "")) for s in steps[1:])
+
 
 def validate_plan(raw_plan: Any, user_msg: str) -> list[dict[str, str]]:
     """Coerce the LLM's plan into executable [{route, task}] steps.
@@ -221,6 +241,9 @@ async def plan_and_route(state: AssistantState) -> AssistantState:
         bool(decision.get("parallel", False))
         and len(steps) > 1
         and all(s["route"] in PARALLELIZABLE for s in steps)
+        # route class alone can't see dependence — a mislabeled parallel plan
+        # silently loses feed-forward, so referential tasks force sequential
+        and not _steps_look_dependent(steps)
     )
     return {
         "route": steps[0]["route"],

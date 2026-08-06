@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
 from app.core.config import settings
-from app.core.pagination import Page, page_params
+from app.core.pagination import BARE_LIST_DESCRIPTION, Page, page_params
 from app.db.session import get_db
 from app.models.chat_session import ChatSession
 from app.models.message import Message
@@ -105,7 +105,7 @@ async def view_shared(token: uuid.UUID, db: AsyncSession = Depends(get_db)) -> S
     )
 
 
-@router.get("/personas", response_model=list[PersonaOut])
+@router.get("/personas", response_model=list[PersonaOut], description=BARE_LIST_DESCRIPTION)
 async def list_personas(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
