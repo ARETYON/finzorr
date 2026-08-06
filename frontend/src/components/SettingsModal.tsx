@@ -18,7 +18,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   const [personas, setPersonas] = useState<PersonaInfo[]>([])
   const [newPersonaName, setNewPersonaName] = useState('')
   const [newPersonaPrompt, setNewPersonaPrompt] = useState('')
-  const dialogRef = useRef<HTMLDivElement>(null)
+  const dialogRef = useRef<HTMLDialogElement>(null)
 
   // dialog semantics: focus moves in on open and is trapped; Escape closes
   useEffect(() => {
@@ -104,17 +104,13 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      onClick={onClose}
-    >
-      <div
-        role="dialog"
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <dialog
+        open
         aria-modal="true"
         aria-labelledby="settings-title"
         ref={dialogRef}
-        className="clip-panel fui-brackets w-full max-w-md rounded-2xl border border-line bg-panel p-6 shadow-lg"
-        onClick={(e) => e.stopPropagation()}
+        className="clip-panel fui-brackets static w-full max-w-md rounded-2xl border border-line bg-panel p-6 text-inherit shadow-lg"
         onKeyDown={onDialogKeyDown}
       >
         <div className="mb-4 flex items-center justify-between">
@@ -232,7 +228,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
             {saving ? 'Saving…' : 'Save'}
           </button>
         </div>
-      </div>
+      </dialog>
     </div>
   )
 }

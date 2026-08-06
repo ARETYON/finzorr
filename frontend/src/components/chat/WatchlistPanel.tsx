@@ -72,7 +72,7 @@ export default function WatchlistPanel({ refreshKey }: { refreshKey: number }) {
             onKeyDown={(e) => e.key === 'Enter' && void add()}
             placeholder="e.g. INFY"
             className="w-full rounded border border-line-strong bg-panel px-2 py-1 text-xs uppercase text-ink"
-            autoFocus
+            ref={(el) => el?.focus()}
           />
           <button onClick={() => void add()} className="text-xs font-medium text-accent-strong">
             Add

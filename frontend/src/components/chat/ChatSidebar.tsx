@@ -66,7 +66,7 @@ export default function ChatSidebar({ watchlistRefreshKey }: { watchlistRefreshK
                   onChange={(e) => setEditTitle(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && void saveEdit()}
                   className="w-full rounded border border-line-strong bg-panel px-1.5 py-0.5 text-xs text-ink"
-                  autoFocus
+                  ref={(el) => el?.focus()}
                 />
                 <button onClick={() => void saveEdit()} aria-label="Save title">
                   <Check size={14} className="text-ok" />

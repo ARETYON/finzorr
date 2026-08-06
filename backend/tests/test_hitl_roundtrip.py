@@ -12,6 +12,8 @@ from typing import Any
 import pytest
 from httpx import AsyncClient
 
+# `integration` is CORRECT here despite the scripted LLM: user_client rides
+# the conftest Postgres fixtures and the graph runs the REAL checkpointer.
 pytestmark = pytest.mark.integration
 
 

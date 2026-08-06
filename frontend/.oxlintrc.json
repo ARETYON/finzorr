@@ -1,6 +1,12 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc", "promise"],
+  "plugins": [
+    "jsx-a11y",
+    "oxc",
+    "promise",
+    "react",
+    "typescript"
+  ],
   "categories": {
     "correctness": "error",
     "suspicious": "warn"
@@ -9,7 +15,12 @@
     "react/react-in-jsx-scope": "off",
     "react/rules-of-hooks": "error",
     "react/exhaustive-deps": "warn",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }],
+    "react/only-export-components": [
+      "warn",
+      {
+        "allowConstantExport": true
+      }
+    ],
     "promise/no-multiple-resolved": "error",
     "typescript/no-explicit-any": "error"
   }

@@ -47,7 +47,7 @@ jobs:
           print(f"parity OK ({len(Settings.model_fields)} vars)")
           EOF
       - name: Sanity tests (no live deps)
-        run: uv run pytest tests/ -q -m sanity --cov=app --cov-report=
+        run: uv run pytest tests/ -q -m sanity --cov=app --cov-report=term --cov-fail-under=45
       - name: Routing eval (deterministic keyword floor, gated at 90%)
         run: uv run python -m evals.routing_eval --min-accuracy 0.9
       - name: Injection-resistance eval (gated at 100%)
