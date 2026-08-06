@@ -7,8 +7,8 @@ from app.ai.completion import stream
 from app.core.logging import log
 from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
 from app.core.web_search import search
-from app.graph.callbacks import emit
 from app.graph.state import AssistantState
+from app.graph.streaming import emit_frame
 
 register(
     AgentPrompt(
@@ -30,7 +30,6 @@ register(
 
 async def web_search_node(state: AssistantState) -> AssistantState:
     """Search -> grounded synthesis with [n] citations; degrade if all fail."""
-    session_id = state["session_id"]
     results, provider = await search(state["user_msg"], max_results=6)
     if not results:
         return {
@@ -45,7 +44,7 @@ async def web_search_node(state: AssistantState) -> AssistantState:
     )
 
     async def on_token(t: str) -> None:
-        await emit(session_id, {"type": "token", "delta": t})
+        emit_frame({"type": "token", "delta": t})
 
     try:
         done = await stream(

@@ -36,9 +36,9 @@ async def run_route(route_name: str, q: str) -> dict[str, Any]:
     from app.graph.nodes.general_chat import general_chat_node
 
     nodes["general_chat"] = general_chat_node
-    from app.graph.nodes.tools import tools_node
+    from app.graph.nodes.tools import tools_plan_node
 
-    nodes["tools"] = tools_node
+    nodes["tools"] = tools_plan_node
     try:
         from app.graph.nodes.nl2sql import nl2sql_node
 

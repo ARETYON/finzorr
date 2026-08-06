@@ -19,8 +19,8 @@ from app.ai.completion import stream
 from app.core.logging import log
 from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
 from app.db.session import SessionLocal
-from app.graph.callbacks import emit
 from app.graph.state import AssistantState
+from app.graph.streaming import emit_frame
 from app.models.price_alert import PriceAlert
 from app.models.scheduled_task import ScheduledTask
 from app.models.watchlist_item import WatchlistItem
@@ -135,7 +135,6 @@ async def _apply_actions(user_id: uuid.UUID, actions: list[dict[str, Any]]) -> l
 
 async def memory_node(state: AssistantState) -> AssistantState:
     """Watchlist Q&A + mutations via the JSON action contract."""
-    session_id = state["session_id"]
     raw_user_id = state.get("user_id", "")
     try:
         user_id = uuid.UUID(raw_user_id)
@@ -168,5 +167,5 @@ async def memory_node(state: AssistantState) -> AssistantState:
     actions = parsed.get("actions") or []
     applied = await _apply_actions(user_id, actions) if user_id and actions else []
     message = str(parsed.get("message", "Done."))
-    await emit(session_id, {"type": "token", "delta": message})
+    emit_frame({"type": "token", "delta": message})
     return {"final_text": message, "route": "memory", "actions": applied}

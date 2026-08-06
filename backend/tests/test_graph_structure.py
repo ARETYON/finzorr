@@ -15,7 +15,8 @@ EXPECTED_NODES = {
     "rag",
     "web_search",
     "nl2sql",
-    "tools",
+    "tools_plan",  # the agent loop is two checkpointed nodes, not one
+    "tools_exec",
     "persist",
 }
 

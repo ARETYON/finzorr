@@ -6,12 +6,15 @@ citations/tool-calls never leak across turns. The WS layer's contract is
 unchanged from the v1 single-node era.
 """
 
+import asyncio
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.core.logging import log, new_correlation_id
 from app.core.tasks import spawn
 from app.db.session import SessionLocal
@@ -98,14 +101,55 @@ async def _vision_turn(
     }
 
 
+OnFrame = Callable[[dict[str, Any]], Awaitable[None]]
+
+
+async def record_out_of_band_turn(
+    session_id: uuid.UUID, user_msg: str, final_text: str
+) -> None:
+    """Persist a turn that the graph did not finish (cancel/timeout) to BOTH
+    stores: the DB (what the UI reloads) and the checkpointer thread (what
+    the model remembers) — writing only one leaves a split-brain history."""
+    from app.graph.nodes.persist import persist_node
+
+    await persist_node(
+        {"session_id": str(session_id), "user_msg": user_msg, "final_text": final_text}
+    )
+    try:
+        graph, has_checkpointer = await get_graph()
+        if has_checkpointer:
+            config = {"configurable": {"thread_id": str(session_id)}}
+            # as_node="persist": the write lands as if persist ran, so the
+            # interrupted superstep can't resume stale on the next turn.
+            await graph.aupdate_state(
+                config,
+                {
+                    "messages": [
+                        {"role": "user", "content": user_msg},
+                        {"role": "assistant", "content": final_text},
+                    ],
+                    "pending_tool_calls": [],
+                },
+                as_node="persist",
+            )
+    except Exception as exc:  # noqa: BLE001 — DB write already succeeded
+        log.warning("turn.checkpoint_sync_failed", error=str(exc))
+
+
 async def run_turn(
     session_id: uuid.UUID,
     user_id: uuid.UUID,
     user_name: str,
     user_msg: str,
     attachments: list[str] | None = None,
+    on_frame: OnFrame | None = None,
 ) -> dict[str, Any]:
-    """Execute one turn through the graph; returns the WS response payload."""
+    """Execute one turn through the graph; returns the WS response payload.
+
+    `on_frame` receives streaming frames (thinking/token/tool_call) emitted
+    by nodes through the graph's custom stream channel — scoped to THIS
+    invocation, so concurrent turns can never cross streams.
+    """
     cid = new_correlation_id()
     if attachments:
         return await _vision_turn(session_id, user_id, user_msg, attachments)
@@ -144,12 +188,46 @@ async def run_turn(
         "sources": [],
         "message_id": "",
         "chart": {},
+        "tool_transcript": [],
+        "pending_tool_calls": [],
+        "tool_iterations": 0,
         "user_instructions": user_instructions,
     }
     if not has_checkpointer:
         turn_input["messages"] = await _load_history(session_id)
     config = {"configurable": {"thread_id": str(session_id)}}
-    out: AssistantState = await graph.ainvoke(turn_input, config=config)
+    out: AssistantState = {}
+    try:
+        async with asyncio.timeout(settings.TURN_TIMEOUT_S):
+            async for mode, chunk in graph.astream(
+                turn_input, config=config, stream_mode=["custom", "values"]
+            ):
+                if mode == "custom":
+                    if on_frame is not None:
+                        await on_frame(dict(chunk))
+                else:
+                    out = chunk
+    except TimeoutError:
+        log.error("turn.timeout", session_id=str(session_id), limit_s=settings.TURN_TIMEOUT_S)
+        note = (
+            "This request took longer than the per-turn limit and was stopped — "
+            "please try a narrower question."
+        )
+        await record_out_of_band_turn(session_id, user_msg, note)
+        return {
+            "type": "response",
+            "message_id": "",
+            "message": note,
+            "route": "general_chat",
+            "route_reason": "turn timeout",
+            "citations": [],
+            "tool_calls": [],
+            "actions": [],
+            "data_as_of": datetime.now(UTC).isoformat(),
+            "sources": [],
+            "chart": None,
+            "session_id": str(session_id),
+        }
     log.info("turn.done", session_id=str(session_id), route=out.get("route"))
     spawn(
         extract_and_store(str(user_id), user_msg, out.get("final_text", "")),

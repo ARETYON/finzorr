@@ -12,8 +12,8 @@ from app.ai.base import SystemMessage, UserMessage
 from app.ai.completion import stream
 from app.core.logging import log
 from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
-from app.graph.callbacks import emit
 from app.graph.state import AssistantState
+from app.graph.streaming import emit_frame
 from app.rag.embeddings import embed_query
 from app.rag.vector_store import GLOSSARY_TENANT, Hit, search
 
@@ -63,7 +63,6 @@ def _citations(hits: list[Hit]) -> list[dict[str, Any]]:
 
 async def rag_node(state: AssistantState) -> AssistantState:
     """Retrieve (glossary + user tenant) then synthesize with citations."""
-    session_id = state["session_id"]
     tenants = [GLOSSARY_TENANT]
     user_id = state.get("user_id", "")
     if user_id and user_id != "debug":
@@ -78,7 +77,7 @@ async def rag_node(state: AssistantState) -> AssistantState:
         log.warning("node.rag.retrieval_failed", error=str(exc))
 
     async def on_token(t: str) -> None:
-        await emit(session_id, {"type": "token", "delta": t})
+        emit_frame({"type": "token", "delta": t})
 
     if not hits:
         system = SystemMessage(

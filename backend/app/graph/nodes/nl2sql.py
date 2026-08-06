@@ -6,8 +6,8 @@ from app.ai.base import SystemMessage, UserMessage
 from app.ai.completion import stream
 from app.core.logging import log
 from app.core.prompt_registry import render_agent_prompt
-from app.graph.callbacks import emit
 from app.graph.state import AssistantState
+from app.graph.streaming import emit_frame
 from app.nl2sql.agent import rows_preview, run_query
 
 STALE_EMPTY_HINT = (
@@ -18,7 +18,6 @@ STALE_EMPTY_HINT = (
 
 async def nl2sql_node(state: AssistantState) -> AssistantState:
     """Guarded SQL screening; the executed SQL is surfaced as a citation."""
-    session_id = state["session_id"]
     result = await run_query(state["user_msg"])
     if not result.success:
         log.warning("node.nl2sql.failed", error=result.error)
@@ -38,7 +37,7 @@ async def nl2sql_node(state: AssistantState) -> AssistantState:
     rows = rows_preview(result.result)
 
     async def on_token(t: str) -> None:
-        await emit(session_id, {"type": "token", "delta": t})
+        emit_frame({"type": "token", "delta": t})
 
     try:
         prompt = render_agent_prompt(

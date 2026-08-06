@@ -27,8 +27,7 @@ from app.core.config import settings
 from app.core.logging import log
 from app.core.rate_limit import check_rate_limit
 from app.db.session import SessionLocal
-from app.graph.callbacks import clear_callback, set_callback
-from app.graph.turn import run_turn
+from app.graph.turn import record_out_of_band_turn, run_turn
 from app.models.chat_session import ChatSession
 from app.models.user import User
 
@@ -44,14 +43,10 @@ def _origin_allowed(websocket: WebSocket) -> bool:
 
 
 async def _persist_partial(session_id: uuid.UUID, user_msg: str, partial: str) -> None:
-    """Persist a cancelled turn so it survives a refresh (best-effort)."""
-    from app.graph.nodes.persist import persist_node
-
+    """Persist a cancelled turn (DB + checkpointer) so UI and model agree."""
     text = f"{partial}\n\n_(stopped by user)_" if partial.strip() else "_(stopped by user)_"
     try:
-        await persist_node(
-            {"session_id": str(session_id), "user_msg": user_msg, "final_text": text}
-        )
+        await record_out_of_band_turn(session_id, user_msg, text)
     except Exception as exc:  # noqa: BLE001 — cancellation cleanup must not raise
         log.warning("ws.cancel.persist_failed", error=str(exc))
 
@@ -108,7 +103,6 @@ class _Connection:
     async def _run(
         self, session_id: uuid.UUID, user_msg: str, attachments: list[str]
     ) -> None:
-        sid = str(session_id)
         # Mirror streamed tokens server-side so a cancelled turn can persist
         # what the user actually saw — cancellation unwinds past persist_node,
         # which otherwise loses both sides of the turn on refresh.
@@ -119,10 +113,14 @@ class _Connection:
                 partial.append(str(frame.get("delta", "")))
             await self.send(frame)
 
-        set_callback(sid, _send_and_record)
         try:
             response = await run_turn(
-                session_id, self.user.id, self.user.name, user_msg, attachments or None
+                session_id,
+                self.user.id,
+                self.user.name,
+                user_msg,
+                attachments or None,
+                on_frame=_send_and_record,
             )
             await self.send(response)
         except asyncio.CancelledError:
@@ -131,8 +129,6 @@ class _Connection:
         except Exception as exc:  # noqa: BLE001 — degrade, keep the socket alive
             log.error("ws.turn.error", error=str(exc))
             await self.send({"type": "error", "message": "assistant error — please retry"})
-        finally:
-            clear_callback(sid)
 
     def cancel_turn(self) -> bool:
         if self.busy and self.turn_task is not None:

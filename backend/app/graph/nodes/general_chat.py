@@ -6,8 +6,8 @@ from app.ai.base import AssistantMessage, ChatMessage, SystemMessage, UserMessag
 from app.ai.completion import stream
 from app.core.logging import log
 from app.core.prompt_registry import render_agent_prompt
-from app.graph.callbacks import emit
 from app.graph.state import AssistantState
+from app.graph.streaming import emit_frame
 
 HISTORY_WINDOW = 12  # last N turns carried into the prompt
 
@@ -26,10 +26,9 @@ def build_history(messages: list[dict[str, Any]]) -> list[ChatMessage]:
 
 async def general_chat_node(state: AssistantState) -> AssistantState:
     """Stream a direct answer; degrade to a friendly error on any failure."""
-    session_id = state["session_id"]
 
     async def on_token(t: str) -> None:
-        await emit(session_id, {"type": "token", "delta": t})
+        emit_frame({"type": "token", "delta": t})
 
     user_name = state.get("user_name", "there")
     system_content = render_agent_prompt("general_chat_system", user_name=user_name)

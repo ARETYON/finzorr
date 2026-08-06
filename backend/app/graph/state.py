@@ -1,11 +1,26 @@
 """Typed state flowing through the assistant graph.
 
-`messages` is the only accumulating channel (checkpointed across turns);
-everything else is per-turn and reset by the turn runner on every invocation.
+`messages` is the only cross-turn accumulating channel. Its reducer caps the
+list — an unbounded `operator.add` made every checkpoint serialize the entire
+conversation history (O(n²) storage per thread over its lifetime). The prompt
+window is narrower still (build_history); the cap only bounds storage.
+
+The tool loop's working state (`tool_transcript`, `pending_tool_calls`,
+`tool_iterations`) lives in graph state so every LLM round-trip and tool
+result is checkpointed as its own superstep — a crash or cancel mid-loop
+preserves completed steps instead of losing them all.
 """
 
-import operator
 from typing import Annotated, Any, TypedDict
+
+MESSAGES_CAP = 60  # newest N chat messages kept in the checkpoint
+
+
+def capped_messages(
+    existing: list[dict[str, Any]], new: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Append-and-trim reducer for the conversation channel."""
+    return (list(existing) + list(new))[-MESSAGES_CAP:]
 
 
 class AssistantState(TypedDict, total=False):
@@ -20,6 +35,11 @@ class AssistantState(TypedDict, total=False):
     route: str
     plan: list[str]
     route_reason: str
+
+    # tool-loop working state (per-turn; checkpointed per superstep)
+    tool_transcript: list[dict[str, Any]]
+    pending_tool_calls: list[dict[str, Any]]
+    tool_iterations: int
 
     # node output
     final_text: str
@@ -36,5 +56,5 @@ class AssistantState(TypedDict, total=False):
     # persist output
     message_id: str
 
-    # accumulating conversation channel (checkpointer-managed)
-    messages: Annotated[list[dict[str, Any]], operator.add]
+    # accumulating conversation channel (checkpointer-managed, capped)
+    messages: Annotated[list[dict[str, Any]], capped_messages]

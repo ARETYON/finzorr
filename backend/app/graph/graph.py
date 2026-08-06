@@ -23,12 +23,15 @@ from app.graph.nodes.memory import memory_node
 from app.graph.nodes.nl2sql import nl2sql_node
 from app.graph.nodes.persist import persist_node
 from app.graph.nodes.rag import rag_node
-from app.graph.nodes.tools import tools_node
+from app.graph.nodes.tools import tools_exec_node, tools_next, tools_plan_node
 from app.graph.nodes.web_search import web_search_node
 from app.graph.state import AssistantState
 from app.graph.supervisor import ROUTES, plan_and_route, route_selector
 
-BRANCHES: dict[Hashable, str] = {route: route for route in ROUTES}
+# The "tools" route enters the checkpointed plan⇄exec loop at tools_plan.
+BRANCHES: dict[Hashable, str] = {
+    route: ("tools_plan" if route == "tools" else route) for route in ROUTES
+}
 
 _graph: Any = None
 _has_checkpointer = False
@@ -49,12 +52,18 @@ def build_graph() -> StateGraph[AssistantState]:
     builder.add_node("rag", rag_node)
     builder.add_node("web_search", web_search_node)
     builder.add_node("nl2sql", nl2sql_node)
-    builder.add_node("tools", tools_node)
+    builder.add_node("tools_plan", tools_plan_node)
+    builder.add_node("tools_exec", tools_exec_node)
     builder.add_node("persist", persist_node)
     builder.add_edge(START, "supervisor")
     builder.add_conditional_edges("supervisor", route_selector, BRANCHES)
-    for route in ROUTES:
+    for route in ROUTES - {"tools"}:
         builder.add_edge(route, "persist")
+    # the agent loop: plan -> (exec -> plan)* -> persist
+    builder.add_conditional_edges(
+        "tools_plan", tools_next, {"tools_exec": "tools_exec", "persist": "persist"}
+    )
+    builder.add_edge("tools_exec", "tools_plan")
     builder.add_edge("persist", END)
     return builder
 
