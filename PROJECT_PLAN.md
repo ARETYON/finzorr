@@ -714,6 +714,46 @@ REST surface: `/healthz` · `/readyz` · `POST/GET /api/auth/*` ·
 
 ---
 
+## 19.5 ChatGPT-Parity Feature Roadmap (all 20, status-tagged — maintained per wave)
+
+Committed decision: build every capability a ChatGPT-class agent has that finzorr
+lacks. Statuses: **LIVE** (shipped) · **WAVE-n** (queued in that wave) ·
+**GATED-ON-KEY** (fully built; activates when a key/config is added) ·
+**DEFERRED** (honest blocker noted). This table is updated after every wave and
+the Word doc regenerated.
+
+### Wave 1 — quick wins (free)
+| # | Feature | Status | Design note |
+|---|---|---|---|
+| 1 | Stock charts in chat | WAVE-1 | history series → `chart` field on WS response; recharts line chart in the bubble |
+| 2 | Voice input (dictate) | WAVE-1 | browser SpeechRecognition mic button; hidden if unsupported |
+| 3 | Voice output (read aloud) | WAVE-1 | speechSynthesis speaker button + auto-read toggle |
+| 4 | Regenerate + edit last message | WAVE-1 | client resends prior user msg; pencil prefills input |
+| 5 | Read-a-URL tool | WAVE-1 | httpx+bs4 extraction, untrusted-content wrapping, tools route |
+| 6 | DOCX/CSV/TXT uploads | WAVE-1 | python-docx / plain decode into the same chunk→embed pipeline |
+| 7 | Chat history search + export | WAVE-1 | ILIKE search endpoint + sidebar box; Markdown download |
+| 8 | Custom instructions | WAVE-1 | users.custom_instructions column, settings modal, prompt injection |
+
+### Wave 2 — medium (free)
+| # | Feature | Status | Design note |
+|---|---|---|---|
+| 9 | Personal long-term memory | WAVE-2 | fire-and-forget fact extraction → Qdrant `memfacts:{user}` → prompt injection; user-visible + deletable |
+| 10 | Image understanding | WAVE-2 | provider-gated vision: Gemini free tier or local Ollama VISION_MODEL |
+| 11 | Daily market briefing | WAVE-2 | in-process scheduler → briefing message into a dedicated session |
+| 12 | Price alerts | WAVE-2 | price_alerts table + ~5-min checker on cached quotes |
+| 13 | Scheduled tasks | WAVE-2 | scheduled_tasks table; runner executes prompts through the normal graph |
+| 14 | Deep-research mode | WAVE-2 | plan sub-questions → parallel search+read_url (capped) → sectioned cited report |
+| 15 | CSV/portfolio analysis | WAVE-2 | analyze_portfolio tool: holdings CSV × live quotes → P&L/allocation |
+
+### Wave 3 — heavy (feasible-free subset; honest gating)
+| # | Feature | Status | Design note |
+|---|---|---|---|
+| 16 | Code interpreter (sandboxed) | WAVE-3 | docker run --rm sandbox, no network, cpu/mem/time limits; dev-only until security review |
+| 17 | Image generation | GATED-ON-KEY | $0-quality not viable (no GPU); tool slot registers when IMAGE_API_* configured |
+| 18 | Canvas/Artifacts (lite) | WAVE-3 | ```document fenced artifacts → side panel, iterate/update, artifacts table |
+| 19 | Share links + personas | WAVE-3 | public read-only /share/{token}; personas table selectable per session |
+| 20 | Gmail/Calendar connectors | WAVE-3 / GATED-ON-KEY | full OAuth code-exchange + encrypted refresh tokens; tools register when GOOGLE_CLIENT_SECRET set |
+
 ## 20. Phase 2 roadmap (everything deliberately deferred, in one place)
 
 Gmail MCP integration + the OAuth code-exchange/refresh-token upgrade it requires ·
