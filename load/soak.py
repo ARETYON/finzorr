@@ -82,6 +82,9 @@ async def main(minutes: float, vus: int) -> None:
     print(f"\nsoak: {minutes}min, {vus} REST VUs — {total} requests, {len(errors)} errors")
     print(f"{'endpoint':<10} {'n':>6} {'p50':>8} {'p95':>8} {'p99':>8}")
     for label, values in sorted(latencies.items()):
+        if len(values) < 2:  # quantiles() raises below 2 samples
+            print(f"{label:<10} {len(values):>6}  (too few samples)")
+            continue
         quantiles = statistics.quantiles(values, n=100)
         print(
             f"{label:<10} {len(values):>6} {quantiles[49]:>7.1f}ms "

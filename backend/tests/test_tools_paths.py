@@ -11,6 +11,8 @@ import pytest
 from app.core.request_context import user_context
 from app.tools_registry.portfolio_tools import _analyze, _parse_holdings
 
+pytestmark = pytest.mark.sanity
+
 # ---------------------------------------------------------------- CSV parsing
 
 

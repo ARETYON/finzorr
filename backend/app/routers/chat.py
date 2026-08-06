@@ -66,7 +66,13 @@ async def search_messages(
     db: AsyncSession = Depends(get_db),
     page: Page = Depends(page_params),
 ) -> list[SearchHitOut]:
-    """Case-insensitive search over the user's own messages (trgm-indexed)."""
+    """Case-insensitive search over the user's own messages (trgm-indexed).
+
+    The limit is clamped to 50 (below the shared 200 cap): every hit ships a
+    content snippet, so pages are an order heavier than list rows. Search
+    keeps the bare-list shape on v1 by design — it's an unbounded-relevance
+    feed, not a stable collection, so cursor semantics don't fit it.
+    """
     if not q.strip():
         return []
     result = await db.execute(

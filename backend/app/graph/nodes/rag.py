@@ -121,4 +121,5 @@ async def rag_node(state: AssistantState) -> AssistantState:
         return {
             "final_text": "I couldn't search the knowledge base right now. Please try again.",
             "route": "rag",
+            "step_error": True,
         }

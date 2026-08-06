@@ -145,6 +145,10 @@ async def list_facts(user_id: str) -> list[dict[str, str]]:
     if store is not None:
         items = await store.asearch((_NAMESPACE, user_id), limit=200)
         return [{"id": item.key, "text": str(item.value.get("text", ""))} for item in items]
+    return await _qdrant_list(user_id)
+
+
+async def _qdrant_list(user_id: str) -> list[dict[str, str]]:
     await ensure_collection()
     points, _ = await get_client().scroll(
         COLLECTION,
@@ -168,6 +172,17 @@ async def delete_fact(user_id: str, point_id: str) -> None:
         # namespace ownership is structural: the delete is scoped to this
         # user's namespace, so another user's key can't be reached
         await store.adelete((_NAMESPACE, user_id), point_id)
+        # right-to-erasure must cover BOTH backends: ids are the same
+        # deterministic uuid5 in Qdrant, so a fact written before the store
+        # came up dies here too (best-effort — Qdrant may be down)
+        try:
+            facts = await _qdrant_list(user_id)
+            if any(f["id"] == point_id for f in facts):
+                await get_client().delete(
+                    COLLECTION, points_selector=qmodels.PointIdsList(points=[point_id])
+                )
+        except Exception as exc:  # noqa: BLE001
+            log.warning("memory.qdrant_erase_failed", error=str(exc))
         return
     facts = await list_facts(user_id)
     if any(f["id"] == point_id for f in facts):

@@ -167,6 +167,7 @@ async def memory_node(state: AssistantState) -> AssistantState:
         return {
             "final_text": "I couldn't update your watchlist right now — please try again.",
             "route": "memory",
+            "step_error": True,
         }
     actions = parsed.get("actions") or []
     applied = await _apply_actions(user_id, actions) if user_id and actions else []

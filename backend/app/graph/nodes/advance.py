@@ -37,14 +37,18 @@ async def advance_node(state: AssistantState) -> AssistantState:
     result: AssistantState = {"step_outputs": outputs, "plan_index": next_index}
     # Step-failure handling: the specialists' degradation paths set
     # `step_error` (the only reliable signal — they return prose, never
-    # raise). One replan attempt per turn; after that, stop marching a
-    # broken plan forward and surface what happened honestly.
-    if state.get("step_error", False) and next_index < len(steps):
+    # raise). One replan attempt per turn — INCLUDING a final/single-step
+    # failure, where one revision ("try a different specialist") can still
+    # rescue the answer; after the budget is spent, stop marching a broken
+    # plan forward and surface what happened honestly.
+    if state.get("step_error", False):
         if state.get("replan_count", 0) == 0:
             log.warning("plan.step_failed_replanning", step=index + 1)
             return {**result, "needs_replan": True, "step_error": False}
-        log.warning("plan.step_failed_early_exit", step=index + 1)
-        return {**result, "plan_index": len(steps), "step_error": False}
+        if next_index < len(steps):
+            log.warning("plan.step_failed_early_exit", step=index + 1)
+            return {**result, "plan_index": len(steps), "step_error": False}
+        result["step_error"] = False  # budget spent on the last step: end normally
     if next_index < len(steps):
         next_step = steps[next_index]
         result["route"] = next_step["route"]

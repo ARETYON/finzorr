@@ -138,6 +138,16 @@ async def research_synthesize_node(state: AssistantState) -> AssistantState:
         "citations": citations,
         "sources": [s["url"] for s in sources[:10]],
     }
+    if not sources:
+        # every search failed upstream — synthesizing a "report" grounded in
+        # zero sources would be confident fiction; refuse and flag instead
+        log.error("research.no_sources")
+        result["final_text"] = (
+            "Research couldn't gather any sources for this question — "
+            "the search backends may be unavailable. Please retry."
+        )
+        result["step_error"] = True
+        return result
     try:
         done = await stream(
             [

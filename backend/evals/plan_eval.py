@@ -112,7 +112,7 @@ JUDGE_PROMPTS = [
 ]
 
 
-async def run_live() -> int:
+async def run_live(min_score: float | None = None) -> int:
     from app.ai.base import SystemMessage, UserMessage
     from app.ai.completion import complete
     from app.graph.supervisor import plan_and_route
@@ -151,11 +151,21 @@ async def run_live() -> int:
         print(f"  {score}/10  {prompt[:60]}")
     mean = sum(scores) / len(scores)
     print(f"judge mean: {mean:.1f}/10 over {len(scores)} prompts")
+    if min_score is not None and mean < min_score:
+        print(f"FAIL: judge mean {mean:.1f} below --min-score {min_score}")
+        return 1
     return 0
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--live", action="store_true")
+    parser.add_argument(
+        "--min-score",
+        type=float,
+        default=None,
+        help="fail (exit 1) if the judge mean falls below this — makes the "
+        "live judge an enforceable gate for local/nightly runs",
+    )
     args = parser.parse_args()
-    sys.exit(asyncio.run(run_live()) if args.live else run_offline())
+    sys.exit(asyncio.run(run_live(args.min_score)) if args.live else run_offline())

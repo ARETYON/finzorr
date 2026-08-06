@@ -8,12 +8,14 @@ explicit code; plain HTTPExceptions get a generic code derived from status.
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 _STATUS_CODES: dict[int, str] = {
     400: "bad_request",
     401: "unauthorized",
     403: "forbidden",
     404: "not_found",
+    405: "method_not_allowed",
     409: "conflict",
     413: "too_large",
     422: "validation_error",
@@ -31,8 +33,12 @@ class AppError(HTTPException):
 
 
 def install_error_handlers(app: FastAPI) -> None:
-    @app.exception_handler(HTTPException)
-    async def _http_error(request: Request, exc: HTTPException) -> JSONResponse:
+    # Registered on the STARLETTE base class: the router raises it directly
+    # for unknown paths (404) and wrong methods (405), and handler lookup
+    # walks the exception's MRO — registering only the FastAPI subclass
+    # lets those two escape the envelope.
+    @app.exception_handler(StarletteHTTPException)
+    async def _http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
         code = getattr(exc, "code", "") or _STATUS_CODES.get(exc.status_code, "error")
         return JSONResponse(
             status_code=exc.status_code,

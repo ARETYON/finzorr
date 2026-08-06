@@ -1,5 +1,5 @@
-// The five journeys the unit suites can't see: real browser, real backend,
-// real LLM, real WebSocket.
+// The journeys the unit suites can't see: real browser, real backend,
+// real LLM, real WebSocket — login/chat/stream/reload-persistence + public share.
 import { expect, test } from '@playwright/test'
 
 async function devLogin(page: import('@playwright/test').Page) {

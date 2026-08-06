@@ -15,6 +15,8 @@ from app.graph.nodes.replan import replan_node
 from app.graph.state import AssistantState
 from app.models.message import Message
 
+pytestmark = pytest.mark.integration
+
 # ---------------------------------------------------------------- replan node
 
 
@@ -83,6 +85,81 @@ async def test_replan_llm_failure_early_exits(monkeypatch: pytest.MonkeyPatch) -
     out = await replan_node(_failed_plan_state())
     assert out["plan_index"] == 2
     assert out["replan_count"] == 1  # the one revision budget is spent either way
+
+
+async def test_final_step_failure_still_replans() -> None:
+    """A failure on the LAST (or only) step gets the one replan attempt too —
+    that's exactly where a revision can still rescue the answer."""
+    from app.graph.nodes.advance import advance_node
+
+    out = await advance_node(
+        {
+            "user_msg": "q",
+            "plan_steps": [{"route": "rag", "task": "look it up"}],
+            "plan_index": 0,
+            "step_outputs": [],
+            "step_error": True,
+            "replan_count": 0,
+            "final_text": "I couldn't search the knowledge base right now.",
+        }
+    )
+    assert out["needs_replan"] is True
+    assert out["step_error"] is False
+
+
+async def test_final_step_failure_after_replan_ends_normally() -> None:
+    from app.graph.nodes.advance import advance_node
+
+    out = await advance_node(
+        {
+            "user_msg": "q",
+            "plan_steps": [{"route": "rag", "task": "t"}, {"route": "general_chat", "task": "t2"}],
+            "plan_index": 1,  # last step
+            "step_outputs": [{"route": "rag", "task": "t", "output": "x"}],
+            "step_error": True,
+            "replan_count": 1,  # budget spent
+            "final_text": "degraded",
+        }
+    )
+    assert out.get("needs_replan", False) is False
+    assert out["step_error"] is False
+    assert out["plan_index"] == 2  # plan over; compose surfaces the failure
+
+
+async def test_rag_and_memory_degrades_set_step_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every specialist failure path must raise the replanner's only signal."""
+    from app.graph.nodes import memory as memory_mod
+    from app.graph.nodes import rag as rag_mod
+
+    async def boom(*_a: Any, **_k: Any) -> Any:
+        raise RuntimeError("backend down")
+
+    # retrieval failure alone degrades to an ungrounded-but-honest answer;
+    # the step-failure signal fires when the synthesis LLM call dies too
+    monkeypatch.setattr(rag_mod, "embed_query", boom)
+    monkeypatch.setattr(rag_mod, "stream", boom)
+    rag_out = await rag_mod.rag_node({"user_msg": "q", "user_id": ""})
+    assert rag_out["step_error"] is True
+
+    monkeypatch.setattr(memory_mod, "stream", boom)
+    mem_out = await memory_mod.memory_node(
+        {"user_msg": "q", "user_id": "", "user_name": "Dev"}
+    )
+    assert mem_out["step_error"] is True
+
+
+async def test_research_synthesis_refuses_with_zero_sources() -> None:
+    """No sources gathered => refuse + flag, never a fabricated 'report'."""
+    from app.graph.nodes.research import research_synthesize_node
+
+    out = await research_synthesize_node(
+        {"user_msg": "q", "current_task": "", "research_sources": [], "research_pages": []}
+    )
+    assert out["step_error"] is True
+    assert "couldn't gather any sources" in out["final_text"]
+    assert out["citations"] == []
 
 
 # ---------------------------------------------------------------- memory node

@@ -146,7 +146,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                 <span className="flex-1 truncate" title={m.text}>• {m.text}</span>
                 <button
                   onClick={() => void removeMemory(m.id)}
-                  className="hidden text-ink-faint hover:text-danger group-hover:block"
+                  className="hidden text-ink-faint hover:text-danger group-hover:block group-focus-within:block focus:block"
                   aria-label="Forget this"
                 >
                   <Trash2 size={11} />
@@ -163,7 +163,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                 <span className="flex-1 truncate" title={p.system_prompt}>• {p.name}</span>
                 <button
                   onClick={() => void removePersona(p.id)}
-                  className="hidden text-ink-faint hover:text-danger group-hover:block"
+                  className="hidden text-ink-faint hover:text-danger group-hover:block group-focus-within:block focus:block"
                   aria-label={`Delete ${p.name}`}
                 >
                   <Trash2 size={11} />
@@ -176,12 +176,14 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
               value={newPersonaName}
               onChange={(e) => setNewPersonaName(e.target.value)}
               placeholder="Name"
+              aria-label="Persona name"
               className="w-28 rounded border border-line-strong bg-panel px-2 py-1 text-xs text-ink"
             />
             <input
               value={newPersonaPrompt}
               onChange={(e) => setNewPersonaPrompt(e.target.value)}
               placeholder="Persona instructions…"
+              aria-label="Persona instructions"
               className="flex-1 rounded border border-line-strong bg-panel px-2 py-1 text-xs text-ink"
             />
             <button

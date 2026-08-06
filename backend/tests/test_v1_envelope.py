@@ -8,11 +8,14 @@ malformed cursor is a 422 with the stable error envelope, not a 500.
 import uuid
 from datetime import timedelta
 
+import pytest
 from httpx import AsyncClient
 
 from app.db.session import SessionLocal
 from app.models.message import Message
 from app.models.user import utcnow
+
+pytestmark = pytest.mark.integration
 
 
 async def _create_session(client: AsyncClient) -> str:

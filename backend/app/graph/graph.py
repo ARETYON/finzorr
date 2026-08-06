@@ -71,6 +71,9 @@ _POOL_MIN, _POOL_MAX = 1, 6
 # attach this often. Previously it was decided once at first request forever.
 _DEGRADED_RETRY_S = 30.0
 _degraded_retry_at = 0.0
+# checkpointer healthy but store attach failed: retry the store on the same
+# cadence instead of serving Qdrant-fallback memory for the process lifetime
+_store_retry_at = 0.0
 
 def traced[NodeF: Callable[..., Awaitable[Any]]](name: str, fn: NodeF) -> NodeF:
     """Every node becomes a span — the graph is invisible to traces otherwise."""
@@ -172,14 +175,30 @@ async def get_graph() -> tuple[Any, bool]:
     re-attempted every _DEGRADED_RETRY_S — a Postgres blip at boot must not
     condemn the process to statelessness for its whole life.
     """
-    global _graph, _has_checkpointer, _pool, _store, _degraded_retry_at  # noqa: PLW0603
+    global _graph, _has_checkpointer, _pool, _store  # noqa: PLW0603
+    global _degraded_retry_at, _store_retry_at  # noqa: PLW0603
+
+    def _cached_ok(now: float) -> bool:
+        if _graph is None:
+            return False
+        if not _has_checkpointer:
+            return now < _degraded_retry_at
+        # healthy checkpointer with a missing store is also a degrade —
+        # rebuild past the retry window so memory can leave the fallback
+        return _store is not None or now < _store_retry_at
+
     now = asyncio.get_running_loop().time()
-    if _graph is not None and (_has_checkpointer or now < _degraded_retry_at):
+    if _cached_ok(now):
         return _graph, _has_checkpointer
     async with _lock:
         now = asyncio.get_running_loop().time()
-        if _graph is not None and (_has_checkpointer or now < _degraded_retry_at):
+        if _cached_ok(now):
             return _graph, _has_checkpointer
+        if _pool is not None:
+            # rebuilding over a live pool (store-retry path) must not leak it
+            with contextlib.suppress(Exception):
+                await _pool.close()
+            _pool = None
         builder = build_graph()
         try:
             from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
@@ -217,6 +236,7 @@ async def get_graph() -> tuple[Any, bool]:
             except Exception as store_exc:  # noqa: BLE001 — Qdrant fallback covers memory
                 log.warning("graph.store.unavailable", error=str(store_exc))
                 store = None
+                _store_retry_at = asyncio.get_running_loop().time() + _DEGRADED_RETRY_S
             _pool = pool
             _store = store
             if store is not None:
