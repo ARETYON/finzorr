@@ -754,6 +754,56 @@ the Word doc regenerated.
 | 19 | Share links + personas | LIVE | public read-only /share/{token}; personas table selectable per session |
 | 20 | Gmail/Calendar connectors | LIVE (GATED-ON-KEY: activates with GOOGLE_CLIENT_SECRET) | full OAuth code-exchange + encrypted refresh tokens; tools register when GOOGLE_CLIENT_SECRET set |
 
+## 19.6 Backend Implementation Map (as built — every use case and its technology)
+
+### The core brain (every message goes through this)
+
+| Component | File | Technology |
+|---|---|---|
+| Orchestrator graph | `backend/app/graph/graph.py` | LangGraph `StateGraph`: supervisor → 1 of 6 specialist nodes → persist |
+| Supervisor/router | `backend/app/graph/supervisor.py` | One LLM call → JSON `{route, plan, reason}` + deterministic regex keyword fallback (works with the LLM down; unit-tested) |
+| Conversation state | `backend/app/graph/turn.py` + checkpointer | LangGraph `AsyncPostgresSaver`, `thread_id = session_id` — history survives restarts; graceful degrade to DB-reloaded history |
+| LLM gateway | `backend/app/ai/` | One `OpenAICompatibleProvider` class (openai SDK, swappable base URL): Ollama `qwen2.5:14b` in dev; Groq/Gemini/OpenRouter/HF via env keys. Bounded fallback retry + per-provider daily token budgets (Redis) |
+| Streaming | `backend/app/routers/chat_ws.py` | FastAPI WebSocket — thinking/token/tool_call/response/stopped/error frames; mid-stream cancel works because turns run as background asyncio tasks; manual Origin validation; cookie auth at handshake |
+
+### Use case → implementation → technology
+
+| Use case | Route / module | Powered by |
+|---|---|---|
+| General Q&A, writing, coding | `graph/nodes/general_chat.py` | Direct LLM streaming; history window + custom instructions + recalled memories injected into the system prompt |
+| Live price / fundamentals / history | `graph/nodes/tools.py` (agent loop, max 6 iterations, parallel dispatch) | yfinance (`.NS`/`.BO`, `asyncio.to_thread`-wrapped), rapidfuzz name→ticker over a committed NSE CSV, Redis TTL cache (45s–24h) |
+| Stock screening (natural language) | `backend/app/nl2sql/` | LLM writes PostgreSQL → sqlglot 5-layer defense (single-SELECT parse, AST write/DDL ban, table whitelist, LIMIT clamp) → read-only DB role (`finzorr_nl2sql_ro`, statement_timeout 5s) → one error-fed retry. Fed by a daily yfinance refresh job |
+| Glossary + uploaded documents (RAG) | `graph/nodes/rag.py`, `backend/app/rag/`, `backend/app/documents/` | Qdrant (tenant-partitioned: glossary / per-user docs), nomic-embed-text via Ollama, PyMuPDF/python-docx/CSV extraction, locator-aware chunks (`file · p.N`), citation-forcing + anti-injection-wrapped excerpts |
+| Fresh news / current events | `graph/nodes/web_search.py` + `core/web_search.py` | Tavily → SearXNG → DuckDuckGo fallback chain (httpx + BeautifulSoup), numbered `[n]` URL citations |
+| Watchlist / price alerts / scheduled tasks (conversational) | `graph/nodes/memory.py` | LLM JSON action contract `{message, actions[]}` → idempotent Postgres writes (`watchlist_items`, `price_alerts`, `scheduled_tasks`) |
+| Personal long-term memory | `backend/app/memory/facts.py` | Post-turn fire-and-forget LLM fact extraction → embedded to Qdrant `memfacts:{user}` → top-k semantic recall injected into every turn; user-visible + deletable |
+| Daily briefing / alert firing / recurring tasks | `backend/app/scheduler.py` | Plain asyncio minute-tick loop (IST), Redis dedupe keys, market-hours gating; posts into a per-user "📅 Daily Briefing" session |
+| Portfolio P&L | `tools_registry/portfolio_tools.py` | Latest uploaded holdings CSV (stdlib csv, flexible headers) × live quotes; current user via ContextVar (`core/request_context.py`) |
+| Read-a-URL | `tools_registry/web_tools.py` | httpx + bs4 main-content extraction, SSRF guard (private/loopback IPs refused), untrusted-content wrapping |
+| Deep research | `tools_registry/research_tools.py` | LLM plans ≤4 sub-questions → parallel searches → ≤4 page reads → cited sectioned report |
+| Sandboxed Python execution | `tools_registry/code_tools.py` | `docker run --rm --network=none --memory=256m --cpus=1 --read-only`, 15s timeout; env-flagged (`CODE_INTERPRETER`), off in prod until security review |
+| Image understanding | `backend/app/ai/vision.py` + `routers/attachments.py` | Base64 image → Gemini flash (if key) or local Ollama vision model (`VISION_MODEL`); PNG/JPEG magic-byte validation, ≤5MB |
+| Image generation (slot) | `tools_registry/image_tools.py` | OpenAI-images-compatible endpoint via `IMAGE_API_*` envs; registers only when configured; output stored as user attachment |
+| GitHub tools | `backend/app/mcp_client/` | Hand-rolled MCP client (JSON-RPC 2.0 over Streamable HTTP), tools/list discovery, read-only allowlist, token-gated |
+| Own microservices as tools | `tools_registry/local_microservice.py` | JSON config file → each entry becomes an LLM tool (httpx GET/POST); zero code to add a service |
+| Gmail / Calendar | `backend/app/integrations/google_connect.py` | Full OAuth code-exchange, Fernet-encrypted refresh tokens (`oauth_tokens` table), read-only scopes; gated on `GOOGLE_CLIENT_SECRET` |
+| Login / sessions | `backend/app/auth/` | google-auth ID-token verification (no client secret needed) + own PyJWT HS256 httpOnly cookie; dev bypass only when `APP_ENV=dev` |
+| Share links / personas | `backend/app/routers/sharing.py` | `share_tokens` (public read-only transcript endpoint) + `personas` (per-session system-prompt overlay injected in `turn.py`) |
+| Inline stock charts | chart payload in `graph/nodes/tools.py` → WS `response.chart` | Full OHLC series from the history cache; rendered by recharts on the frontend |
+| Artifacts (documents panel) | prompt convention in `core/prompt_registry.py` | ```` ```document ```` fenced blocks; persisted inside the message row; side-panel rendering client-side |
+| Feedback loop | `routers/chat.py` + `models/feedback.py` | 👍/👎 → `feedback` table with route/query/response/citations — the future eval golden-dataset seed |
+
+### Data stores (4)
+
+- **PostgreSQL 16** — 12 tables (`users`, `chat_sessions`, `messages`, `feedback`, `watchlist_items`, `fundamentals`, `documents`, `price_alerts`, `scheduled_tasks`, `personas`, `share_tokens`, `oauth_tokens`) + LangGraph checkpoint tables; Alembic migrations incl. the raw-SQL read-only role.
+- **Qdrant** — one `knowledge` collection, three tenant families: `glossary` (global), `{user_id}` (documents), `memfacts:{user_id}` (memories); 768-dim cosine, nomic-embed-text.
+- **Redis 7** — market-data cache, per-user rate limits, per-provider token budgets, scheduler dedupe keys; `--save ""`, `maxmemory` + `allkeys-lru`.
+- **Local disk → Cloudflare R2 at deploy** — PDFs/DOCX/CSVs, chat image attachments, generated images; behind the swappable `DocumentStorage` interface with a path-traversal jail.
+
+### Cross-cutting spine
+
+structlog JSON logs + per-turn correlation IDs · graceful degradation on every external call (LLM, yfinance, Qdrant, web, tools — user-facing fallbacks, never crashes) · per-user Redis rate limiting · WS Origin validation · prompt-injection wrapping on all untrusted content (documents, web pages, emails) · 58 deterministic pytest tests (no live deps) · ruff lint · 3 GitHub Actions pipelines (backend CI, frontend CI, security scans) — all green.
+
 ## 20. Phase 2 roadmap (everything deliberately deferred, in one place)
 
 Gmail MCP integration + the OAuth code-exchange/refresh-token upgrade it requires ·
