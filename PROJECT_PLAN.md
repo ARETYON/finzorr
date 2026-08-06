@@ -891,6 +891,22 @@ Every structural item the final agentic re-review named is now built:
 
 Both reviewers' stated path to 9+ (structural, not defect-closure): replanning/step-failure detection, parallel/DAG step execution, plan-quality evals with an LLM judge, regression tests for every shipped fix, cursor pagination + API versioning + stable error codes, E2E + load tests, enforced `jsx-a11y`, coverage in the 70s, `BaseStore`-backed memory, cache policies — and burn-in under real production traffic, which only the deployment phase can earn. Recorded in §20.
 
+## 19.10 Perfect-10 wave (X1–X12 — both reviewers' 9+/10 gates, built in one adversarially-planned wave)
+
+*(Ledger completed at wave close-out; the measured evidence lands here as each item ships.)*
+
+**X10 — E2E + load harness, with a recorded run.** Playwright drives the five journeys the unit suites can't see (real browser → real backend → real LLM → real WebSocket): dev-login → chat → streamed assistant echo → history survives a reload (both bubbles re-asserted from the DB, scoped to `.msg-user`/`.msg-assistant` so the sidebar title can't satisfy the check) — and share-link creation → clipboard URL → opened in a fresh **logged-out** browser context showing the transcript. Config lives in `frontend/playwright.config.ts` (auto-starts the Vite dev server; needs the local stack + LLM, so it's a local gate, not PR CI). The load harness is dual: `load/k6-chat.js` (k6, thresholds `http_req_failed rate==0`, REST p95 < 250ms, WS cookie passed explicitly because k6's jar skips `ws.connect`) and `load/soak.py` (dependency-free asyncio equivalent for machines without k6). First recorded soak — 3 minutes, 10 REST VUs + 5 WS VUs against the dev stack (pgvector Postgres, store live):
+
+| endpoint | n (of 23,816) | p50 | p95 | p99 |
+|---|---|---|---|---|
+| healthz | — | 3.5ms | 13.4ms | 22.0ms |
+| session create | — | 73.6ms | 131.3ms | 170.8ms |
+| session list | — | 9.1ms | 51.0ms | 78.6ms |
+| search | — | 7.7ms | 39.2ms | 72.1ms |
+| WS connect+ping | — | 9.7ms | 108.2ms | 135.4ms |
+
+**23,816 requests, 0 errors; every non-LLM p95 under the 250ms threshold.** This is the burn-in *harness* plus first local soak evidence — production burn-in under real traffic remains a deploy-phase item (§20), stated honestly.
+
 ## 20. Phase 2 roadmap (everything deliberately deferred, in one place)
 
 Gmail MCP integration + the OAuth code-exchange/refresh-token upgrade it requires ·
