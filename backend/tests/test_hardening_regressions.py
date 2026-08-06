@@ -302,7 +302,9 @@ class TestTurnDeadline:
 
         recorded: list[str] = []
 
-        async def fake_record(_sid: uuid.UUID, _msg: str, text: str) -> None:
+        async def fake_record(
+            _sid: uuid.UUID, _msg: str, text: str, turn_id: str = ""
+        ) -> None:
             recorded.append(text)
 
         async def fake_instructions(*_a: Any) -> str:

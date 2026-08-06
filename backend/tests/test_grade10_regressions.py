@@ -101,14 +101,14 @@ class TestWsFrameRobustness:
 
     def test_attachment_parsing_happens_before_guard_claim(self) -> None:
         """Structural check: in start_turn's source, _parse_attachments must
-        precede _active_sessions.add — parsing after the claim re-opens the
+        precede the turn-lock claim — parsing after the claim re-opens the
         permanent-lockout bug."""
         import inspect
 
         from app.routers.chat_ws import _Connection
 
         source = inspect.getsource(_Connection.start_turn)
-        assert source.index("_parse_attachments") < source.index("_active_sessions.add")
+        assert source.index("_parse_attachments") < source.index("claim_turn")
         assert "except BaseException" in source  # failed start releases the claim
 
 
@@ -120,11 +120,10 @@ class TestSnippetFencing:
         fence them, not only the fetched page bodies."""
         import inspect
 
-        from app.graph.nodes import web_search
-        from app.tools_registry import research_tools
+        from app.graph.nodes import research, web_search
 
         assert "wrap_untrusted" in inspect.getsource(web_search.web_search_node)
-        assert "wrap_untrusted" in inspect.getsource(research_tools._research)
+        assert "wrap_untrusted" in inspect.getsource(research.research_synthesize_node)
 
 
 # ------------------------------------------------- correlation id inherit

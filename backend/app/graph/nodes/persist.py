@@ -9,6 +9,7 @@ their streamed answer).
 import uuid
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import InterfaceError, OperationalError
 
 from app.ai.base import UserMessage as AiUserMessage
 from app.ai.completion import complete
@@ -46,12 +47,46 @@ async def _auto_title(session_id: uuid.UUID, first_message: str) -> None:
             await db.commit()
 
 
+async def _already_persisted(turn_id: str) -> bool:
+    """Idempotency check — the marker is set only AFTER a successful commit,
+    so a graph-level retry of a failed write is never suppressed, while a
+    cancel/timeout racing a COMPLETED persist is. Best-effort (fails open)."""
+    if not turn_id:
+        return False
+    try:
+        from app.core.redis import get_redis
+
+        return bool(await get_redis().get(f"persisted:{turn_id}"))
+    except Exception:  # noqa: BLE001 — idempotency is best-effort
+        return False
+
+
+async def _mark_persisted(turn_id: str) -> None:
+    if not turn_id:
+        return
+    try:
+        from app.core.redis import get_redis
+
+        await get_redis().set(f"persisted:{turn_id}", "1", ex=3600)
+    except Exception:  # noqa: BLE001
+        log.warning("node.persist.mark_failed")
+
+
 async def persist_node(state: AssistantState) -> AssistantState:
-    """Write the turn; always returns a message_id and the messages delta."""
+    """Write the turn; returns a message_id and the messages delta.
+
+    Transient DB errors (OperationalError/InterfaceError) RE-RAISE so the
+    graph-level RetryPolicy gets a real second attempt; anything else
+    degrades (the user already has their streamed answer).
+    """
     assistant_id = uuid.uuid4()
     session_uuid = uuid.UUID(state["session_id"])
     user_msg = state["user_msg"]
     final_text = state.get("final_text", "")
+    turn_id = state.get("turn_id", "")
+    if await _already_persisted(turn_id):
+        log.info("node.persist.duplicate_suppressed", session_id=str(session_uuid))
+        return {"message_id": "", "messages": []}
     try:
         async with SessionLocal() as db:
             db.add(Message(session_id=session_uuid, role="user", content=user_msg))
@@ -73,8 +108,11 @@ async def persist_node(state: AssistantState) -> AssistantState:
                 select(func.count()).select_from(Message).where(Message.session_id == session_uuid)
             )
             await db.commit()
+        await _mark_persisted(turn_id)
         if count is not None and count <= 2:  # first turn just landed
             spawn(_auto_title(session_uuid, user_msg), name="chat.auto_title")
+    except (OperationalError, InterfaceError):
+        raise  # transient — let the graph's RetryPolicy take the second shot
     except Exception as exc:  # noqa: BLE001 — never fail the turn on persistence
         log.error("node.persist.error", error=str(exc))
     return {

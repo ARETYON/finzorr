@@ -89,5 +89,13 @@ export function useChatSocket(onFrame: FrameHandler) {
     }
   }, [])
 
-  return { connected, sendChat, cancel }
+  const sendApproval = useCallback((sessionId: string, approved: boolean) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(
+        JSON.stringify({ type: 'approval', session_id: sessionId, approved }),
+      )
+    }
+  }, [])
+
+  return { connected, sendChat, cancel, sendApproval }
 }

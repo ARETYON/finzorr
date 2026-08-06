@@ -16,9 +16,10 @@ from app.core.config import settings
 from app.core.logging import log
 from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
 from app.graph.state import AssistantState
+from app.graph.streaming import emit_frame
 
 ROUTES: frozenset[str] = frozenset(
-    {"general_chat", "memory", "rag", "web_search", "nl2sql", "tools"}
+    {"general_chat", "memory", "rag", "web_search", "nl2sql", "tools", "research"}
 )
 
 _WEB_HINTS = re.compile(
@@ -37,7 +38,7 @@ _SQL_HINTS = re.compile(
 _TOOL_HINTS = re.compile(
     r"\b(price|quote|chart|trading at|share price|52.week|overview of|fundamentals of|"
     r"history|historical|performance of|volume|my (portfolio|holdings)|"
-    r"deep research|research report|run (python|code)|execute (python|code)|"
+    r"run (python|code)|execute (python|code)|"
     r"compute|calculate)\b",
     re.IGNORECASE,
 )
@@ -58,9 +59,9 @@ _JSON_BLOCK = re.compile(r"\{.*\}", re.DOTALL)
 register(
     AgentPrompt(
         name="supervisor_planner",
-        version="1",
+        version="2",
         template=(
-            "You route user messages for an assistant with these specialists:\n"
+            "You plan how an assistant answers, using these specialists:\n"
             "- general_chat: anything conversational, coding, writing, general knowledge\n"
             "- memory: the user's watchlist, PRICE ALERTS ('alert me when...'), and "
             "scheduled/recurring tasks ('every day...')\n"
@@ -70,17 +71,48 @@ register(
             "- nl2sql: screening/filtering MANY stocks by metrics (P/E, yield, "
             "market cap...)\n"
             "- tools: live price/quote/fundamentals/history of SPECIFIC stocks, the "
-            "user's PORTFOLIO/holdings performance, deep research reports, "
-            "running/executing Python code or calculations, or reading/summarizing "
-            "a URL the user pasted\n\n"
-            'Reply with ONLY JSON: {{"route": "<one of the six>", '
-            '"plan": ["<step>", ...], "reason": "<short>"}}'
+            "user's PORTFOLIO/holdings performance, running/executing Python code "
+            "or calculations, or reading/summarizing a URL the user pasted\n"
+            "- research: DEEP research — multi-source reports, thorough "
+            "comparisons, anything needing several searches and page reads\n\n"
+            "Most messages need ONE specialist — return a single step. When the "
+            "request genuinely chains two or three (e.g. 'find the latest news on X "
+            "and then show its current price' -> web_search then tools), return the "
+            "steps in order (max 3); each step's output is given to the next.\n"
+            'Reply with ONLY JSON: {{"plan": [{{"route": "<specialist>", '
+            '"task": "<what this step must do>"}}, ...], "reason": "<short>"}}'
         ),
     )
 )
 
+MAX_PLAN_STEPS = 3
+
+
+def validate_plan(raw_plan: Any, user_msg: str) -> list[dict[str, str]]:
+    """Coerce the LLM's plan into executable [{route, task}] steps.
+
+    Tolerates the v1 shape (list of strings = single step) and any garbage
+    (-> empty, caller falls back to keyword routing). Never raises.
+    """
+    if not isinstance(raw_plan, list):
+        return []
+    steps: list[dict[str, str]] = []
+    for entry in raw_plan[:MAX_PLAN_STEPS]:
+        if isinstance(entry, dict):
+            route = str(entry.get("route", ""))
+            task = str(entry.get("task", "")).strip() or user_msg
+            if route in ROUTES:
+                steps.append({"route": route, "task": task})
+        # v1 emitted plain strings — informational only, not a routed step
+    return steps
+
 
 _URL_HINT = re.compile(r"https?://\S+", re.IGNORECASE)
+_RESEARCH_HINTS = re.compile(
+    r"\b(deep research|research report|do (deep )?research|thorough (comparison|analysis)|"
+    r"research (on|about|into))\b",
+    re.IGNORECASE,
+)
 
 
 def keyword_route(message: str) -> str:
@@ -93,6 +125,8 @@ def keyword_route(message: str) -> str:
         return "nl2sql"
     if _WEB_HINTS.search(message):
         return "web_search"
+    if _RESEARCH_HINTS.search(message):
+        return "research"
     if _TOOL_HINTS.search(message):
         return "tools"
     if _RAG_HINTS.search(message):
@@ -127,7 +161,13 @@ def _routing_context(state: AssistantState) -> str:
 
 
 async def plan_and_route(state: AssistantState) -> AssistantState:
-    """One routing LLM call with the keyword router as safety net."""
+    """One planning LLM call with the keyword router as safety net.
+
+    Output is an EXECUTABLE plan: 1-3 [{route, task}] steps that the advance
+    node walks, feeding each step's output into the next. The deterministic
+    keyword fallback always yields a single step, so a total LLM outage
+    degrades to classifier behavior, never to a dead turn.
+    """
     user_msg = state["user_msg"]
     fallback = keyword_route(user_msg)
     decision: dict[str, Any] = {}
@@ -139,19 +179,42 @@ async def plan_and_route(state: AssistantState) -> AssistantState:
             ],
             model=settings.SUPERVISOR_MODEL or None,
             temperature=0.0,
-            max_tokens=300,
+            max_tokens=400,
             response_format={"type": "json_object"},
         )
         decision = _parse_decision(raw)
     except Exception as exc:  # noqa: BLE001 — fallback carries the turn
         log.warning("supervisor.llm_failed", error=str(exc))
-    route = str(decision.get("route", ""))
-    if route not in ROUTES:
-        route = fallback
-    plan = decision.get("plan") or [user_msg]
+    steps = validate_plan(decision.get("plan"), user_msg)
+    # v1-era shape ({"route": ...} with no step objects) still routes
+    if not steps:
+        route = str(decision.get("route", ""))
+        if route not in ROUTES:
+            route = fallback
+        steps = [{"route": route, "task": user_msg}]
     reason = str(decision.get("reason", "keyword fallback"))
-    log.info("supervisor.route", route=route, reason=reason[:100])
-    return {"route": route, "plan": [str(p) for p in plan], "route_reason": reason}
+    log.info(
+        "supervisor.route",
+        route=steps[0]["route"],
+        steps=len(steps),
+        reason=reason[:100],
+    )
+    emit_frame(
+        {
+            "type": "routing",
+            "route": steps[0]["route"],
+            "reason": reason[:160],
+            "step": 1,
+            "of": len(steps),
+        }
+    )
+    return {
+        "route": steps[0]["route"],
+        "plan_steps": steps,
+        "plan_index": 0,
+        "current_task": steps[0]["task"],
+        "route_reason": reason,
+    }
 
 
 def route_selector(state: AssistantState) -> str:

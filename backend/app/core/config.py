@@ -71,6 +71,9 @@ class Settings(BaseSettings):
 
     # --- Turn execution ---
     TURN_TIMEOUT_S: int = 300  # wall-clock ceiling for one assistant turn
+    # Comma-separated tool names that require explicit user approval before
+    # they execute (human-in-the-loop interrupt); empty disables HITL
+    HITL_TOOLS: str = "run_python"
 
     # --- Observability ---
     # OTLP traces endpoint (e.g. self-hosted Phoenix http://localhost:6006/v1/traces);

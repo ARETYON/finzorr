@@ -19,7 +19,7 @@ from app.ai.completion import stream
 from app.core.logging import log
 from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
 from app.db.session import SessionLocal
-from app.graph.nodes.common import with_instructions
+from app.graph.nodes.common import step_context, task_for, with_instructions
 from app.graph.state import AssistantState
 from app.graph.streaming import emit_frame
 from app.models.price_alert import PriceAlert
@@ -156,7 +156,7 @@ async def memory_node(state: AssistantState) -> AssistantState:
     )
     try:
         done = await stream(
-            [system, UserMessage(content=state["user_msg"])],
+            [system, UserMessage(content=task_for(state) + step_context(state))],
             temperature=0.3,
             max_tokens=512,
             response_format={"type": "json_object"},

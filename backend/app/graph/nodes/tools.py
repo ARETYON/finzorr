@@ -12,6 +12,8 @@ from datetime import UTC, datetime
 from functools import partial
 from typing import Any
 
+from langgraph.types import interrupt
+
 from app.ai.base import (
     AssistantMessage,
     ChatMessage,
@@ -24,14 +26,13 @@ from app.ai.completion import stream
 from app.core.logging import log
 from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
 from app.core.request_context import user_context
-from app.graph.nodes.common import with_instructions
+from app.graph.nodes.common import step_context, task_for, with_instructions
 from app.graph.nodes.general_chat import build_history
 from app.graph.state import AssistantState
 from app.graph.streaming import emit_frame
 from app.tools_registry import (
     market_tools,  # noqa: F401 — registers the family
     portfolio_tools,  # noqa: F401 — registers analyze_portfolio
-    research_tools,  # noqa: F401 — registers deep_research
     web_tools,  # noqa: F401 — registers read_url
 )
 from app.tools_registry.dispatcher import all_tools, dispatch_all
@@ -49,7 +50,6 @@ register(
             "from memory for live market data.\n"
             "- If a company name is ambiguous, call search_symbol first.\n"
             "- Portfolio/holdings questions -> call analyze_portfolio.\n"
-            "- Requests for research/reports/comparisons -> call deep_research.\n"
             "- A pasted URL -> call read_url.\n"
             "- Report numbers exactly as returned; mention the data may be delayed.\n"
             "- End finance answers with: \"This is general information, not investment "
@@ -180,7 +180,7 @@ async def tools_plan_node(state: AssistantState) -> AssistantState:
     msgs: list[ChatMessage] = [
         SystemMessage(content=system_content),
         *build_history(state.get("messages", [])),
-        UserMessage(content=state["user_msg"]),
+        UserMessage(content=task_for(state) + step_context(state)),
         *[_deserialize(e) for e in state.get("tool_transcript", [])],
     ]
 
@@ -217,21 +217,77 @@ async def tools_plan_node(state: AssistantState) -> AssistantState:
     }
 
 
+def _hitl_tools() -> set[str]:
+    from app.core.config import settings
+
+    return {t.strip() for t in settings.HITL_TOOLS.split(",") if t.strip()}
+
+
+_DECLINED = (
+    "Error: the user declined to run this tool. Explain what you would have "
+    "done and offer an alternative — do NOT retry the tool."
+)
+_HITL_UNAVAILABLE = (
+    "Error: this tool requires interactive user approval, which needs the "
+    "conversation checkpointer (currently unavailable). Explain this to the "
+    "user instead of running the tool."
+)
+
+
 async def tools_exec_node(state: AssistantState) -> AssistantState:
-    """Dispatch every pending tool call concurrently; results never raise."""
+    """Dispatch every pending tool call concurrently; results never raise.
+
+    Sensitive tools (HITL_TOOLS) pause the graph with `interrupt()` — the
+    checkpointer parks the turn until the user approves or declines over the
+    WS. In degraded (no-checkpointer) mode there is nowhere to park, so
+    sensitive tools auto-decline honestly instead of silently executing.
+    """
     pending = state.get("pending_tool_calls", [])
+    sensitive = [c for c in pending if str(c.get("name", "")) in _hitl_tools()]
+    approved = True
+    if sensitive:
+        if not state.get("hitl_enabled", False):
+            approved = False
+            decline_message = _HITL_UNAVAILABLE
+        else:
+            # Re-runs from the top on resume; interrupt() then RETURNS the
+            # user's decision instead of raising. Code above this point must
+            # stay side-effect-free.
+            decision = interrupt(
+                {
+                    "tools": [
+                        {"name": str(c.get("name", "")), "arguments": c.get("arguments", {})}
+                        for c in sensitive
+                    ]
+                }
+            )
+            approved = bool(decision)
+            decline_message = _DECLINED
+
+    sensitive_ids = {str(c.get("id", "")) for c in sensitive}
+    to_run = (
+        pending
+        if approved
+        else [c for c in pending if str(c.get("id", "")) not in sensitive_ids]
+    )
     # Identity bound only while tools execute — set/reset as a pair so it can
     # never leak across users in a shared task (scheduler).
     with user_context(state.get("user_id", "")):
         results = await dispatch_all(
-            [(str(c["name"]), dict(c.get("arguments", {}))) for c in pending]
+            [(str(c["name"]), dict(c.get("arguments", {}))) for c in to_run]
         )
+    results_by_id = dict(
+        zip([str(c["id"]) for c in to_run], results, strict=True)
+    )
     return {
         "tool_transcript": [
             *state.get("tool_transcript", []),
             *[
-                _serialize_tool_result(str(call["id"]), result)
-                for call, result in zip(pending, results, strict=True)
+                _serialize_tool_result(
+                    str(call["id"]),
+                    results_by_id.get(str(call["id"]), decline_message if sensitive else ""),
+                )
+                for call in pending
             ],
         ],
         "pending_tool_calls": [],
@@ -239,5 +295,5 @@ async def tools_exec_node(state: AssistantState) -> AssistantState:
 
 
 def tools_next(state: AssistantState) -> str:
-    """Conditional edge: execute pending calls, or the answer is ready."""
-    return "tools_exec" if state.get("pending_tool_calls") else "persist"
+    """Conditional edge: execute pending calls, or report to the plan walker."""
+    return "tools_exec" if state.get("pending_tool_calls") else "advance"

@@ -17,6 +17,12 @@ EXPECTED_NODES = {
     "nl2sql",
     "tools_plan",  # the agent loop is two checkpointed nodes, not one
     "tools_exec",
+    "research_plan",  # deep research is four checkpointed stages
+    "research_search",
+    "research_read",
+    "research_synthesize",
+    "advance",  # the plan walker
+    "compose",  # multi-step synthesis
     "persist",
 }
 

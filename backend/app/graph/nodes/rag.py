@@ -13,7 +13,7 @@ from app.ai.completion import stream
 from app.core.logging import log
 from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
 from app.core.untrusted import wrap_untrusted
-from app.graph.nodes.common import with_instructions
+from app.graph.nodes.common import step_context, task_for, with_instructions
 from app.graph.state import AssistantState
 from app.graph.streaming import emit_frame
 from app.rag.embeddings import embed_query
@@ -73,7 +73,7 @@ async def rag_node(state: AssistantState) -> AssistantState:
         tenants.append(user_id)
     hits: list[Hit] = []
     try:
-        vector = await embed_query(state["user_msg"])
+        vector = await embed_query(task_for(state))
         hits = await asyncio.wait_for(
             search(vector, tenants=tenants, top_k=TOP_K), timeout=SEARCH_TIMEOUT_S
         )
@@ -99,7 +99,7 @@ async def rag_node(state: AssistantState) -> AssistantState:
         )
     try:
         done = await stream(
-            [system, UserMessage(content=state["user_msg"])],
+            [system, UserMessage(content=task_for(state) + step_context(state))],
             on_token=on_token,
             temperature=0.3,
             max_tokens=1536,

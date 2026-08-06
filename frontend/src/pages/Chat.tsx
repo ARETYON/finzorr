@@ -24,6 +24,10 @@ export default function Chat() {
   const [prefill, setPrefill] = useState('')
   const [artifact, setArtifact] = useState<Artifact | null>(null)
   const [hasShareLink, setHasShareLink] = useState(false)
+  const [routing, setRouting] = useState<string | null>(null)
+  const [approval, setApproval] = useState<{ tools: { name: string }[]; sessionId: string } | null>(
+    null,
+  )
   const lastUserMsgRef = useRef('')
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -44,6 +48,15 @@ export default function Chat() {
       switch (frame.type) {
         case 'thinking':
           setThinking(true)
+          setRouting(null)
+          break
+        case 'routing':
+          setThinking(true)
+          setRouting(
+            frame.of && frame.of > 1
+              ? `Step ${frame.step}/${frame.of} — ${frame.route}…`
+              : `Routing to ${frame.route}…`,
+          )
           break
         case 'token':
           setThinking(false)
@@ -59,9 +72,16 @@ export default function Chat() {
             ]
           })
           break
+        case 'approval_required':
+          setThinking(false)
+          setStreaming(false)
+          setRouting(null)
+          setApproval({ tools: frame.tools, sessionId: frame.session_id })
+          break
         case 'response':
           setThinking(false)
           setStreaming(false)
+          setRouting(null)
           setMessages((prev) => [
             ...prev.filter((m) => m.id !== STREAMING_ID),
             {
@@ -87,6 +107,7 @@ export default function Chat() {
         case 'stopped':
           setThinking(false)
           setStreaming(false)
+          setRouting(null)
           setMessages((prev) =>
             prev.map((m) => (m.id === STREAMING_ID ? { ...m, id: '', streaming: false } : m)),
           )
@@ -94,6 +115,7 @@ export default function Chat() {
         case 'error':
           setThinking(false)
           setStreaming(false)
+          setRouting(null)
           // drop any partial streaming bubble — otherwise the next turn's
           // tokens append onto this orphaned fragment
           setMessages((prev) => prev.filter((m) => m.id !== STREAMING_ID))
@@ -106,7 +128,7 @@ export default function Chat() {
     [setMessages],
   )
 
-  const { connected, sendChat, cancel } = useChatSocket(onFrame)
+  const { connected, sendChat, cancel, sendApproval } = useChatSocket(onFrame)
 
   const handleSend = async (text: string, attachments?: string[]) => {
     let sessionId = activeSessionId
@@ -241,13 +263,43 @@ export default function Chat() {
             {thinking && (
               <div className="flex justify-start">
                 <div className="msg-assistant clip-panel animate-pulse rounded-2xl border border-line bg-panel px-4 py-2.5 text-sm text-ink-faint">
-                  Thinking…
+                  {routing ?? 'Thinking…'}
                 </div>
               </div>
             )}
             <div ref={bottomRef} />
           </div>
         </div>
+        {approval && (
+          <div
+            role="alertdialog"
+            aria-label="Tool approval required"
+            className="mx-auto mb-2 flex w-full max-w-3xl items-center gap-3 rounded-xl border border-line-strong bg-panel px-4 py-2.5 text-sm"
+          >
+            <span className="flex-1 text-ink-mid">
+              Allow running{' '}
+              <strong>{approval.tools.map((t) => t.name).join(', ')}</strong>?
+            </span>
+            <button
+              onClick={() => {
+                sendApproval(approval.sessionId, true)
+                setApproval(null)
+              }}
+              className="rounded-lg bg-accent-strong px-3 py-1 text-xs font-semibold text-white"
+            >
+              Approve
+            </button>
+            <button
+              onClick={() => {
+                sendApproval(approval.sessionId, false)
+                setApproval(null)
+              }}
+              className="rounded-lg border border-line-strong px-3 py-1 text-xs font-semibold text-ink-mid"
+            >
+              Decline
+            </button>
+          </div>
+        )}
         <MessageInput
           disabled={!connected}
           streaming={streaming || thinking}

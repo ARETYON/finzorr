@@ -107,15 +107,22 @@ OnFrame = Callable[[dict[str, Any]], Awaitable[None]]
 
 
 async def record_out_of_band_turn(
-    session_id: uuid.UUID, user_msg: str, final_text: str
+    session_id: uuid.UUID, user_msg: str, final_text: str, turn_id: str = ""
 ) -> None:
     """Persist a turn that the graph did not finish (cancel/timeout) to BOTH
     stores: the DB (what the UI reloads) and the checkpointer thread (what
-    the model remembers) — writing only one leaves a split-brain history."""
+    the model remembers) — writing only one leaves a split-brain history.
+    `turn_id` makes the write idempotent against a persist that already
+    committed inside the graph before the cancel landed."""
     from app.graph.nodes.persist import persist_node
 
     await persist_node(
-        {"session_id": str(session_id), "user_msg": user_msg, "final_text": final_text}
+        {
+            "session_id": str(session_id),
+            "user_msg": user_msg,
+            "final_text": final_text,
+            "turn_id": turn_id,
+        }
     )
     try:
         graph, has_checkpointer = await get_graph()
@@ -145,14 +152,17 @@ async def run_turn(
     user_msg: str,
     attachments: list[str] | None = None,
     on_frame: OnFrame | None = None,
+    turn_id: str = "",
 ) -> dict[str, Any]:
     """Execute one turn through the graph; returns the WS response payload.
 
     `on_frame` receives streaming frames (thinking/token/tool_call) emitted
     by nodes through the graph's custom stream channel — scoped to THIS
-    invocation, so concurrent turns can never cross streams.
+    invocation, so concurrent turns can never cross streams. `turn_id` is the
+    idempotency key shared with the caller's cancel path.
     """
     cid = new_correlation_id()
+    turn_id = turn_id or uuid.uuid4().hex
     if attachments:
         return await _vision_turn(session_id, user_id, user_msg, attachments)
     graph, has_checkpointer = await get_graph()
@@ -175,9 +185,13 @@ async def run_turn(
         "user_name": user_name,
         "user_msg": user_msg,
         "correlation_id": cid,
+        "turn_id": turn_id,
         # explicit per-turn resets — only `messages` may accumulate
         "route": "",
-        "plan": [],
+        "plan_steps": [],
+        "plan_index": 0,
+        "step_outputs": [],
+        "current_task": "",
         "route_reason": "",
         "final_text": "",
         "citations": [],
@@ -190,51 +204,117 @@ async def run_turn(
         "tool_transcript": [],
         "pending_tool_calls": [],
         "tool_iterations": 0,
+        "research_subs": [],
+        "research_sources": [],
+        "research_pages": [],
+        "hitl_enabled": has_checkpointer,
         "user_instructions": user_instructions,
     }
     if not has_checkpointer:
         turn_input["messages"] = await _load_history(session_id)
     config = {"configurable": {"thread_id": str(session_id)}}
-    out: AssistantState = {}
     try:
-        async with asyncio.timeout(settings.TURN_TIMEOUT_S):
-            with span("turn", session_id=str(session_id)) as turn_span:
-                async for mode, chunk in graph.astream(
-                    turn_input, config=config, stream_mode=["custom", "values"]
-                ):
-                    if mode == "custom":
-                        if on_frame is not None:
-                            await on_frame(dict(chunk))
-                    else:
-                        out = chunk
-                turn_span.set_attribute("route", out.get("route", ""))
-                turn_span.set_attribute("tool_calls", len(out.get("tool_calls", [])))
+        out = await _drive_graph(graph, turn_input, config, session_id, on_frame)
     except TimeoutError:
-        log.error("turn.timeout", session_id=str(session_id), limit_s=settings.TURN_TIMEOUT_S)
-        note = (
-            "This request took longer than the per-turn limit and was stopped — "
-            "please try a narrower question."
-        )
-        await record_out_of_band_turn(session_id, user_msg, note)
-        return {
-            "type": "response",
-            "message_id": "",
-            "message": note,
-            "route": "general_chat",
-            "route_reason": "turn timeout",
-            "citations": [],
-            "tool_calls": [],
-            "actions": [],
-            "data_as_of": datetime.now(UTC).isoformat(),
-            "sources": [],
-            "chart": None,
-            "session_id": str(session_id),
-        }
+        return await _timeout_payload(session_id, user_msg, turn_id)
+    if payload := _interrupt_payload(session_id, out):
+        return payload
     log.info("turn.done", session_id=str(session_id), route=out.get("route"))
     spawn(
         extract_and_store(str(user_id), user_msg, out.get("final_text", "")),
         name="memory.extract",
     )
+    return _response_payload(session_id, out)
+
+
+async def resume_turn(
+    session_id: uuid.UUID,
+    approved: bool,
+    on_frame: OnFrame | None = None,
+) -> dict[str, Any]:
+    """Resume a turn parked at a HITL interrupt with the user's decision."""
+    from langgraph.types import Command
+
+    graph, has_checkpointer = await get_graph()
+    if not has_checkpointer:
+        return _error_payload(session_id, "nothing to approve — no parked turn")
+    config = {"configurable": {"thread_id": str(session_id)}}
+    try:
+        out = await _drive_graph(
+            graph, Command(resume=approved), config, session_id, on_frame
+        )
+    except TimeoutError:
+        return await _timeout_payload(session_id, "(approval decision)", "")
+    except Exception as exc:  # noqa: BLE001 — e.g. no pending interrupt on the thread
+        log.warning("turn.resume_failed", session_id=str(session_id), error=str(exc))
+        return _error_payload(session_id, "nothing to approve — no parked turn")
+    if payload := _interrupt_payload(session_id, out):
+        return payload  # a later step interrupted again
+    log.info("turn.resumed", session_id=str(session_id), approved=approved)
+    return _response_payload(session_id, out)
+
+
+async def _drive_graph(
+    graph: Any,
+    graph_input: Any,
+    config: dict[str, Any],
+    session_id: uuid.UUID,
+    on_frame: OnFrame | None,
+) -> AssistantState:
+    """Stream one graph invocation under the per-turn deadline."""
+    out: AssistantState = {}
+    async with asyncio.timeout(settings.TURN_TIMEOUT_S):
+        with span("turn", session_id=str(session_id)) as turn_span:
+            async for mode, chunk in graph.astream(
+                graph_input, config=config, stream_mode=["custom", "values"]
+            ):
+                if mode == "custom":
+                    if on_frame is not None:
+                        await on_frame(dict(chunk))
+                else:
+                    out = chunk
+            turn_span.set_attribute("route", out.get("route", ""))
+            turn_span.set_attribute("tool_calls", len(out.get("tool_calls", [])))
+    return out
+
+
+def _interrupt_payload(
+    session_id: uuid.UUID, out: AssistantState
+) -> dict[str, Any] | None:
+    """The approval_required frame when the graph parked at an interrupt."""
+    interrupts = dict(out).get("__interrupt__") if isinstance(out, dict) else None
+    if not isinstance(interrupts, list | tuple) or not interrupts:
+        return None
+    first = interrupts[0]
+    value = getattr(first, "value", first)
+    tools = value.get("tools", []) if isinstance(value, dict) else []
+    log.info("turn.interrupted", session_id=str(session_id), tools=len(tools))
+    return {
+        "type": "approval_required",
+        "tools": tools,
+        "session_id": str(session_id),
+    }
+
+
+async def _timeout_payload(
+    session_id: uuid.UUID, user_msg: str, turn_id: str
+) -> dict[str, Any]:
+    log.error("turn.timeout", session_id=str(session_id), limit_s=settings.TURN_TIMEOUT_S)
+    note = (
+        "This request took longer than the per-turn limit and was stopped — "
+        "please try a narrower question."
+    )
+    await record_out_of_band_turn(session_id, user_msg, note, turn_id=turn_id)
+    payload = _response_payload(session_id, {"final_text": note})
+    payload["route_reason"] = "turn timeout"
+    return payload
+
+
+def _error_payload(session_id: uuid.UUID, message: str) -> dict[str, Any]:
+    return {"type": "error", "message": message, "session_id": str(session_id)}
+
+
+def _response_payload(session_id: uuid.UUID, out: AssistantState) -> dict[str, Any]:
     return {
         "type": "response",
         "message_id": out.get("message_id", ""),

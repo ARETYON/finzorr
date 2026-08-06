@@ -6,7 +6,7 @@ from app.ai.base import AssistantMessage, ChatMessage, SystemMessage, UserMessag
 from app.ai.completion import stream
 from app.core.logging import log
 from app.core.prompt_registry import render_agent_prompt
-from app.graph.nodes.common import with_instructions
+from app.graph.nodes.common import step_context, task_for, with_instructions
 from app.graph.state import AssistantState
 from app.graph.streaming import emit_frame
 
@@ -36,7 +36,7 @@ async def general_chat_node(state: AssistantState) -> AssistantState:
     system_content = with_instructions(system_content, state)
     system = SystemMessage(content=system_content)
     msgs: list[ChatMessage] = [system, *build_history(state.get("messages", []))]
-    msgs.append(UserMessage(content=state["user_msg"]))
+    msgs.append(UserMessage(content=task_for(state) + step_context(state)))
     try:
         done = await stream(msgs, on_token=on_token, temperature=0.7, max_tokens=2048)
         return {"final_text": done.text, "route": "general_chat"}

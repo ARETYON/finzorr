@@ -6,7 +6,7 @@ from app.ai.base import SystemMessage, UserMessage
 from app.ai.completion import stream
 from app.core.logging import log
 from app.core.prompt_registry import render_agent_prompt
-from app.graph.nodes.common import with_instructions
+from app.graph.nodes.common import task_for, with_instructions
 from app.graph.state import AssistantState
 from app.graph.streaming import emit_frame
 from app.nl2sql.agent import rows_preview, run_query
@@ -19,7 +19,7 @@ STALE_EMPTY_HINT = (
 
 async def nl2sql_node(state: AssistantState) -> AssistantState:
     """Guarded SQL screening; the executed SQL is surfaced as a citation."""
-    result = await run_query(state["user_msg"])
+    result = await run_query(task_for(state))
     if not result.success:
         log.warning("node.nl2sql.failed", error=result.error)
         return {
@@ -43,7 +43,7 @@ async def nl2sql_node(state: AssistantState) -> AssistantState:
     try:
         prompt = render_agent_prompt(
             "nl2sql_answer",
-            question=state["user_msg"],
+            question=task_for(state),
             row_count=str(len(result.result.rows)),
             rows=str(rows) if rows else f"[] ({STALE_EMPTY_HINT})",
         )

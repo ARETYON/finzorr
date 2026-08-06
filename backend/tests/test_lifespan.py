@@ -16,5 +16,5 @@ async def test_lifespan_starts_and_stops_cleanly(_database: None) -> None:
         from app.tools_registry.dispatcher import all_tools
 
         names = {t.name for t in all_tools()}
-        assert {"get_quote", "search_symbol", "read_url", "deep_research"} <= names
+        assert {"get_quote", "search_symbol", "read_url", "analyze_portfolio"} <= names
     # shutdown ran without raising (scheduler cancel + graph pool close)

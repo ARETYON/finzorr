@@ -30,16 +30,27 @@ class AssistantState(TypedDict, total=False):
     user_name: str
     user_msg: str
     correlation_id: str
+    turn_id: str  # idempotency key for persist (normal + out-of-band paths)
+    hitl_enabled: bool  # checkpointer present -> sensitive tools may interrupt
 
-    # planner output
+    # planner output — plan_steps is EXECUTABLE: [{route, task}], walked by
+    # the advance node with each step's output fed into the next
     route: str
-    plan: list[str]
+    plan_steps: list[dict[str, str]]
+    plan_index: int
+    step_outputs: list[dict[str, Any]]
+    current_task: str
     route_reason: str
 
     # tool-loop working state (per-turn; checkpointed per superstep)
     tool_transcript: list[dict[str, Any]]
     pending_tool_calls: list[dict[str, Any]]
     tool_iterations: int
+
+    # research-stage working state (per-turn; checkpointed per stage)
+    research_subs: list[str]
+    research_sources: list[dict[str, str]]
+    research_pages: list[str]
 
     # node output
     final_text: str

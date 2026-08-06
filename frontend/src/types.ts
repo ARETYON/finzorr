@@ -69,7 +69,12 @@ export interface ChatMessage {
 // WebSocket frames (server -> client)
 export type ServerFrame =
   | { type: 'thinking' }
-  | { type: 'routing'; route: string; reason: string }
+  | { type: 'routing'; route: string; reason: string; step?: number; of?: number }
+  | {
+      type: 'approval_required'
+      tools: { name: string; arguments?: Record<string, unknown> }[]
+      session_id: string
+    }
   | { type: 'token'; delta: string }
   | { type: 'tool_call'; name: string; arguments?: Record<string, unknown> }
   | {

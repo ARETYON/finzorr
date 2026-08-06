@@ -37,7 +37,7 @@ DATASET: list[tuple[str, str]] = [
     ("How is my portfolio doing?", "tools"),
     ("Analyze my holdings CSV", "tools"),
     ("Run python code to compute 17% CAGR on 50000 over 8 years", "tools"),
-    ("Do deep research on the Indian EV battery sector", "tools"),
+
     ("read https://example.com/article and summarize it", "tools"),
     ("What's Wipro trading at right now?", "tools"),
     ("Current volume on Tata Motors?", "tools"),
@@ -50,6 +50,10 @@ DATASET: list[tuple[str, str]] = [
     ("Top 10 companies by market cap in the pharma sector", "nl2sql"),
     ("Find undervalued stocks with pb ratio below 1.5", "nl2sql"),
     ("show me all stocks with eps above 100", "nl2sql"),
+    # --- research (multi-source deep dives) ---
+    ("Do deep research on the Indian EV battery sector", "research"),
+    ("Write a research report comparing UPI and card payments", "research"),
+    ("Give me a thorough comparison of index funds vs active funds", "research"),
     # --- web_search (current events / fresh info) ---
     ("What's the latest news on the RBI rate decision?", "web_search"),
     ("Who won the match yesterday?", "web_search"),

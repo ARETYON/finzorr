@@ -8,7 +8,7 @@ from app.core.logging import log
 from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
 from app.core.untrusted import wrap_untrusted
 from app.core.web_search import search
-from app.graph.nodes.common import with_instructions
+from app.graph.nodes.common import task_for, with_instructions
 from app.graph.state import AssistantState
 from app.graph.streaming import emit_frame
 
@@ -32,7 +32,7 @@ register(
 
 async def web_search_node(state: AssistantState) -> AssistantState:
     """Search -> grounded synthesis with [n] citations; degrade if all fail."""
-    results, provider = await search(state["user_msg"], max_results=6)
+    results, provider = await search(task_for(state), max_results=6)
     if not results:
         return {
             "final_text": (
@@ -61,7 +61,7 @@ async def web_search_node(state: AssistantState) -> AssistantState:
                         render_agent_prompt("web_synthesis", results=numbered), state
                     )
                 ),
-                UserMessage(content=state["user_msg"]),
+                UserMessage(content=task_for(state)),
             ],
             on_token=on_token,
             temperature=0.3,

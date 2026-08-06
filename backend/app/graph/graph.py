@@ -1,4 +1,10 @@
-"""The assistant graph: supervisor -> one specialist -> persist.
+"""The assistant graph: supervisor plans -> specialists execute -> persist.
+
+Shape: supervisor emits an executable 1-3 step plan; each specialist edge
+lands on `advance`, which records the step's output and either arms the next
+specialist (feeding prior outputs forward), synthesizes via `compose`
+(multi-step only), or persists. The tools route is its own checkpointed
+plan⇄exec loop inside a step.
 
 Checkpointer: AsyncPostgresSaver keyed by thread_id=session_id (conversation
 context survives restarts). It runs over an AsyncConnectionPool — a single
@@ -11,26 +17,40 @@ crashing.
 """
 
 import asyncio
-from collections.abc import Hashable
-from typing import Any
+import contextlib
+from collections.abc import Awaitable, Callable, Hashable
+from functools import wraps
+from typing import Any, cast
 
 from langgraph.graph import END, START, StateGraph
+from langgraph.types import RetryPolicy
+from sqlalchemy.exc import InterfaceError, OperationalError
 
 from app.core.config import settings
 from app.core.logging import log
+from app.core.otel import span
+from app.graph.nodes.advance import advance_node, after_step
+from app.graph.nodes.compose import compose_node
 from app.graph.nodes.general_chat import general_chat_node
 from app.graph.nodes.memory import memory_node
 from app.graph.nodes.nl2sql import nl2sql_node
 from app.graph.nodes.persist import persist_node
 from app.graph.nodes.rag import rag_node
+from app.graph.nodes.research import (
+    research_plan_node,
+    research_read_node,
+    research_search_node,
+    research_synthesize_node,
+)
 from app.graph.nodes.tools import tools_exec_node, tools_next, tools_plan_node
 from app.graph.nodes.web_search import web_search_node
 from app.graph.state import AssistantState
 from app.graph.supervisor import ROUTES, plan_and_route, route_selector
 
 # The "tools" route enters the checkpointed plan⇄exec loop at tools_plan.
+_ROUTE_ENTRY = {"tools": "tools_plan", "research": "research_plan"}
 BRANCHES: dict[Hashable, str] = {
-    route: ("tools_plan" if route == "tools" else route) for route in ROUTES
+    route: _ROUTE_ENTRY.get(route, route) for route in ROUTES
 }
 
 _graph: Any = None
@@ -42,28 +62,66 @@ _lock = asyncio.Lock()
 # tiny, so cap connections rather than scale with users.
 _POOL_MIN, _POOL_MAX = 1, 4
 
+# Degraded (checkpointer-less) mode is a state, not a life sentence: retry the
+# attach this often. Previously it was decided once at first request forever.
+_DEGRADED_RETRY_S = 30.0
+_degraded_retry_at = 0.0
+
+def traced[NodeF: Callable[..., Awaitable[Any]]](name: str, fn: NodeF) -> NodeF:
+    """Every node becomes a span — the graph is invisible to traces otherwise."""
+
+    @wraps(fn)
+    async def wrapper(state: AssistantState) -> Any:
+        with span("node", node=name):
+            return await fn(state)
+
+    return cast(NodeF, wrapper)
+
+
+# Transient DB failures retry once at graph level before persist degrades.
+_PERSIST_RETRY = RetryPolicy(max_attempts=2, retry_on=(OperationalError, InterfaceError))
+
 
 def build_graph() -> StateGraph[AssistantState]:
     """Wire nodes and edges (uncompiled — tests introspect this)."""
     builder = StateGraph(AssistantState)
-    builder.add_node("supervisor", plan_and_route)
-    builder.add_node("general_chat", general_chat_node)
-    builder.add_node("memory", memory_node)
-    builder.add_node("rag", rag_node)
-    builder.add_node("web_search", web_search_node)
-    builder.add_node("nl2sql", nl2sql_node)
-    builder.add_node("tools_plan", tools_plan_node)
-    builder.add_node("tools_exec", tools_exec_node)
-    builder.add_node("persist", persist_node)
+    builder.add_node("supervisor", traced("supervisor", plan_and_route))
+    builder.add_node("general_chat", traced("general_chat", general_chat_node))
+    builder.add_node("memory", traced("memory", memory_node))
+    builder.add_node("rag", traced("rag", rag_node))
+    builder.add_node("web_search", traced("web_search", web_search_node))
+    builder.add_node("nl2sql", traced("nl2sql", nl2sql_node))
+    builder.add_node("tools_plan", traced("tools_plan", tools_plan_node))
+    builder.add_node("tools_exec", traced("tools_exec", tools_exec_node))
+    builder.add_node("research_plan", traced("research_plan", research_plan_node))
+    builder.add_node("research_search", traced("research_search", research_search_node))
+    builder.add_node("research_read", traced("research_read", research_read_node))
+    builder.add_node(
+        "research_synthesize", traced("research_synthesize", research_synthesize_node)
+    )
+    builder.add_node("advance", traced("advance", advance_node))
+    builder.add_node("compose", traced("compose", compose_node))
+    builder.add_node("persist", traced("persist", persist_node), retry_policy=_PERSIST_RETRY)
     builder.add_edge(START, "supervisor")
     builder.add_conditional_edges("supervisor", route_selector, BRANCHES)
-    for route in ROUTES - {"tools"}:
-        builder.add_edge(route, "persist")
-    # the agent loop: plan -> (exec -> plan)* -> persist
+    # every specialist reports back to the plan walker
+    for route in ROUTES - {"tools", "research"}:
+        builder.add_edge(route, "advance")
+    # the research pipeline: four checkpointed stages
+    builder.add_edge("research_plan", "research_search")
+    builder.add_edge("research_search", "research_read")
+    builder.add_edge("research_read", "research_synthesize")
+    builder.add_edge("research_synthesize", "advance")
+    # the tools agent loop: plan -> (exec -> plan)* -> advance
     builder.add_conditional_edges(
-        "tools_plan", tools_next, {"tools_exec": "tools_exec", "persist": "persist"}
+        "tools_plan", tools_next, {"tools_exec": "tools_exec", "advance": "advance"}
     )
     builder.add_edge("tools_exec", "tools_plan")
+    # advance: next plan step | compose (multi-step) | persist
+    builder.add_conditional_edges(
+        "advance", after_step, {**BRANCHES, "compose": "compose", "persist": "persist"}
+    )
+    builder.add_edge("compose", "persist")
     builder.add_edge("persist", END)
     return builder
 
@@ -74,12 +132,19 @@ def _pg_dsn() -> str:
 
 
 async def get_graph() -> tuple[Any, bool]:
-    """Compiled-graph singleton; returns (graph, has_checkpointer)."""
-    global _graph, _has_checkpointer, _pool  # noqa: PLW0603
-    if _graph is not None:
+    """Compiled-graph singleton; returns (graph, has_checkpointer).
+
+    A degraded (checkpointer-less) compile is served from cache but
+    re-attempted every _DEGRADED_RETRY_S — a Postgres blip at boot must not
+    condemn the process to statelessness for its whole life.
+    """
+    global _graph, _has_checkpointer, _pool, _degraded_retry_at  # noqa: PLW0603
+    now = asyncio.get_running_loop().time()
+    if _graph is not None and (_has_checkpointer or now < _degraded_retry_at):
         return _graph, _has_checkpointer
     async with _lock:
-        if _graph is not None:
+        now = asyncio.get_running_loop().time()
+        if _graph is not None and (_has_checkpointer or now < _degraded_retry_at):
             return _graph, _has_checkpointer
         builder = build_graph()
         try:
@@ -87,7 +152,7 @@ async def get_graph() -> tuple[Any, bool]:
             from psycopg.rows import dict_row
             from psycopg_pool import AsyncConnectionPool
 
-            _pool = AsyncConnectionPool(
+            pool: Any = AsyncConnectionPool(
                 _pg_dsn(),
                 min_size=_POOL_MIN,
                 max_size=_POOL_MAX,
@@ -99,16 +164,21 @@ async def get_graph() -> tuple[Any, bool]:
                     "row_factory": dict_row,
                 },
             )
-            await _pool.open(wait=True, timeout=10)
-            checkpointer = AsyncPostgresSaver(_pool)
+            await pool.open(wait=True, timeout=10)
+            checkpointer = AsyncPostgresSaver(pool)
             await checkpointer.setup()
+            _pool = pool
             _graph = builder.compile(checkpointer=checkpointer)
             _has_checkpointer = True
             log.info("graph.compiled", checkpointer="postgres-pool", pool_max=_POOL_MAX)
-        except Exception as exc:  # noqa: BLE001 — degrade to stateless
+        except Exception as exc:  # noqa: BLE001 — degrade to stateless, retry later
             log.warning("graph.checkpointer.unavailable", error=str(exc))
+            if "pool" in locals():
+                with contextlib.suppress(Exception):
+                    await pool.close()  # half-open pool must not leak
             _graph = builder.compile()
             _has_checkpointer = False
+            _degraded_retry_at = asyncio.get_running_loop().time() + _DEGRADED_RETRY_S
         return _graph, _has_checkpointer
 
 

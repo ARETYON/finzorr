@@ -26,8 +26,10 @@ from app.auth.dependencies import get_ws_user
 from app.core.config import settings
 from app.core.logging import log
 from app.core.rate_limit import check_rate_limit
+from app.core.turn_lock import claim as claim_turn
+from app.core.turn_lock import release as release_turn
 from app.db.session import SessionLocal
-from app.graph.turn import record_out_of_band_turn, run_turn
+from app.graph.turn import record_out_of_band_turn, resume_turn, run_turn
 from app.models.chat_session import ChatSession
 from app.models.user import User
 
@@ -36,12 +38,10 @@ router = APIRouter(tags=["chat-ws"])
 WS_POLICY_VIOLATION = 1008
 WS_UNAUTHORIZED = 4401
 
-# One in-flight turn per SESSION, across sockets: the per-connection `busy`
-# guard can't stop two tabs running concurrent graph invocations on one
-# thread_id (concurrent checkpoint writes). Single-process by design — the
-# deployment model is one backend container; a Redis SET NX would replace
-# this if that ever changes.
-_active_sessions: set[str] = set()
+# One in-flight turn per SESSION, across sockets AND workers: the
+# per-connection `busy` guard can't stop two tabs (or two uvicorn workers)
+# running concurrent graph invocations on one thread_id. The Redis-backed
+# lock in core/turn_lock handles both, with a TTL self-heal.
 
 
 def _origin_allowed(websocket: WebSocket) -> bool:
@@ -49,11 +49,13 @@ def _origin_allowed(websocket: WebSocket) -> bool:
     return origin == settings.FRONTEND_ORIGIN or (settings.is_dev and not origin)
 
 
-async def _persist_partial(session_id: uuid.UUID, user_msg: str, partial: str) -> None:
+async def _persist_partial(
+    session_id: uuid.UUID, user_msg: str, partial: str, turn_id: str = ""
+) -> None:
     """Persist a cancelled turn (DB + checkpointer) so UI and model agree."""
     text = f"{partial}\n\n_(stopped by user)_" if partial.strip() else "_(stopped by user)_"
     try:
-        await record_out_of_band_turn(session_id, user_msg, text)
+        await record_out_of_band_turn(session_id, user_msg, text, turn_id=turn_id)
     except Exception as exc:  # noqa: BLE001 — cancellation cleanup must not raise
         log.warning("ws.cancel.persist_failed", error=str(exc))
 
@@ -116,17 +118,16 @@ class _Connection:
         # process lifetime (only _run releases the guard).
         attachments = _parse_attachments(data)
         sid = str(session_id)
-        if sid in _active_sessions:
+        if not await claim_turn(sid):
             await self.send(
                 {"type": "error", "message": "a reply is already in progress in this chat"}
             )
             return
-        _active_sessions.add(sid)
         try:
             await self.send({"type": "thinking"})
             self.turn_task = asyncio.create_task(self._run(session_id, user_msg, attachments))
         except BaseException:
-            _active_sessions.discard(sid)  # claim must never outlive a failed start
+            await release_turn(sid)  # claim must never outlive a failed start
             raise
 
     async def _run(
@@ -136,6 +137,7 @@ class _Connection:
         # what the user actually saw — cancellation unwinds past persist_node,
         # which otherwise loses both sides of the turn on refresh.
         partial: list[str] = []
+        turn_id = uuid.uuid4().hex  # shared with the cancel path (idempotency)
 
         async def _send_and_record(frame: dict[str, Any]) -> None:
             if frame.get("type") == "token":
@@ -150,16 +152,54 @@ class _Connection:
                 user_msg,
                 attachments or None,
                 on_frame=_send_and_record,
+                turn_id=turn_id,
             )
             await self.send(response)
         except asyncio.CancelledError:
-            await asyncio.shield(_persist_partial(session_id, user_msg, "".join(partial)))
+            await asyncio.shield(
+                _persist_partial(session_id, user_msg, "".join(partial), turn_id)
+            )
             await self.send({"type": "stopped"})
         except Exception as exc:  # noqa: BLE001 — degrade, keep the socket alive
             log.error("ws.turn.error", error=str(exc))
             await self.send({"type": "error", "message": "assistant error — please retry"})
         finally:
-            _active_sessions.discard(str(session_id))
+            await release_turn(str(session_id))
+
+    async def start_approval(self, data: dict[str, Any]) -> None:
+        """Resume a turn parked at a HITL interrupt with approve/decline."""
+        if self.busy:
+            await self.send({"type": "error", "message": "a reply is already in progress"})
+            return
+        session_id = await _owned_session_id(self.user, str(data.get("session_id", "")))
+        if session_id is None:
+            await self.send({"type": "error", "message": "unknown session"})
+            return
+        approved = bool(data.get("approved", False))
+        sid = str(session_id)
+        if not await claim_turn(sid):
+            await self.send(
+                {"type": "error", "message": "a reply is already in progress in this chat"}
+            )
+            return
+        try:
+            await self.send({"type": "thinking"})
+            self.turn_task = asyncio.create_task(self._run_resume(session_id, approved))
+        except BaseException:
+            await release_turn(sid)
+            raise
+
+    async def _run_resume(self, session_id: uuid.UUID, approved: bool) -> None:
+        try:
+            response = await resume_turn(session_id, approved, on_frame=self.send)
+            await self.send(response)
+        except asyncio.CancelledError:
+            await self.send({"type": "stopped"})
+        except Exception as exc:  # noqa: BLE001 — degrade, keep the socket alive
+            log.error("ws.resume.error", error=str(exc))
+            await self.send({"type": "error", "message": "assistant error — please retry"})
+        finally:
+            await release_turn(str(session_id))
 
     def cancel_turn(self) -> bool:
         if self.busy and self.turn_task is not None:
@@ -199,6 +239,8 @@ async def chat_websocket(websocket: WebSocket) -> None:
                     await conn.send({"type": "stopped"})
             elif frame_type == "chat":
                 await conn.start_turn(data)
+            elif frame_type == "approval":
+                await conn.start_approval(data)
             else:
                 await conn.send({"type": "error", "message": "unknown frame type"})
     except WebSocketDisconnect:
