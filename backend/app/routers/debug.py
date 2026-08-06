@@ -8,7 +8,7 @@ from app.ai.base import SystemMessage, ToolDefinition, UserMessage
 from app.ai.completion import stream
 from app.ai.registry import available_providers
 
-router = APIRouter(prefix="/api/debug", tags=["debug"])
+router = APIRouter(prefix="/debug", tags=["debug"])
 
 _PING_TOOL = ToolDefinition(
     name="get_current_time",

@@ -9,7 +9,7 @@ from app.core.config import settings
 from app.integrations.google_connect import authorize_url, connectors_enabled, exchange_code
 from app.models.user import User
 
-router = APIRouter(prefix="/api/integrations/google", tags=["integrations"])
+router = APIRouter(prefix="/integrations/google", tags=["integrations"])
 
 
 @router.get("/authorize")

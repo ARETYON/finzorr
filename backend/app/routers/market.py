@@ -9,7 +9,7 @@ from app.market_data.yfinance_provider import SymbolNotFoundError, provider
 from app.models.user import User
 from app.schemas.misc import QuoteOut
 
-router = APIRouter(prefix="/api/market", tags=["market"])
+router = APIRouter(prefix="/market", tags=["market"])
 
 
 @router.get("/quote/{symbol}", response_model=QuoteOut)

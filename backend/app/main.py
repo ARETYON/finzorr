@@ -131,18 +131,26 @@ app.add_middleware(
     expose_headers=["X-Request-ID"],  # otherwise the SPA can never read it
 )
 
-app.include_router(health.router)
-app.include_router(auth.router)
-app.include_router(chat.router)
-app.include_router(chat_ws.router)
-app.include_router(market.router)
-app.include_router(documents.router)
-app.include_router(watchlist.router)
-app.include_router(attachments.router)
-app.include_router(integrations.router)
-app.include_router(sharing.router)
+app.include_router(health.router)  # /healthz, /readyz — never versioned
+app.include_router(chat_ws.router)  # /ws/chat — include ONCE (prefixes apply to WS routes)
+
+# REST is mounted twice: /api/v1 is canonical, /api is the compatibility
+# alias (same handlers, same behavior; operationIds are unique per path).
+_API_ROUTERS = (
+    auth.router,
+    chat.router,
+    market.router,
+    documents.router,
+    watchlist.router,
+    attachments.router,
+    integrations.router,
+    sharing.router,
+)
+for _router in _API_ROUTERS:
+    app.include_router(_router, prefix="/api/v1")
+    app.include_router(_router, prefix="/api")
 
 if settings.is_dev:
     from app.routers import debug
 
-    app.include_router(debug.router)
+    app.include_router(debug.router, prefix="/api")

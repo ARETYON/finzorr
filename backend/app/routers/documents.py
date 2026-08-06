@@ -23,7 +23,7 @@ from app.models.user import User
 from app.rag.vector_store import delete_document as qdrant_delete_document
 from app.schemas.documents import DocumentOut, DocumentUploadOut
 
-router = APIRouter(prefix="/api/documents", tags=["documents"])
+router = APIRouter(prefix="/documents", tags=["documents"])
 
 _ALLOWED_EXTENSIONS = (".pdf", ".docx", ".csv", ".txt", ".md")
 _MAGIC = {".pdf": b"%PDF-", ".docx": b"PK"}

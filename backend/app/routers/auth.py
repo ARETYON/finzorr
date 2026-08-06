@@ -13,7 +13,7 @@ from app.models.user import User
 from app.schemas.auth import GoogleLoginIn, UserOut, UserUpdateIn
 from app.schemas.misc import LogoutOut, MemoryFactOut
 
-router = APIRouter(prefix="/api/auth", tags=["auth"])
+router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 def _set_session(response: Response, user: User) -> None:

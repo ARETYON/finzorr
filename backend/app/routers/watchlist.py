@@ -13,7 +13,7 @@ from app.models.user import User
 from app.models.watchlist_item import WatchlistItem
 from app.schemas.misc import WatchlistAddOut, WatchlistItemOut
 
-router = APIRouter(prefix="/api/watchlist", tags=["watchlist"])
+router = APIRouter(prefix="/watchlist", tags=["watchlist"])
 
 
 class WatchlistAddIn(BaseModel):

@@ -16,7 +16,7 @@ from app.models.user import User
 from app.schemas.chat import FeedbackIn, MessageOut, SessionOut, SessionRenameIn
 from app.schemas.misc import FeedbackCreateOut, PendingApprovalOut, SearchHitOut
 
-router = APIRouter(prefix="/api/chat", tags=["chat"])
+router = APIRouter(prefix="/chat", tags=["chat"])
 
 
 async def _owned_session(

@@ -27,7 +27,7 @@ from app.schemas.sharing import (
     SharedMessageOut,
 )
 
-router = APIRouter(prefix="/api", tags=["sharing"])
+router = APIRouter(prefix="", tags=["sharing"])
 
 SHARE_VIEW_MAX_MESSAGES = 200
 

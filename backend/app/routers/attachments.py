@@ -11,7 +11,7 @@ from app.documents.storage import get_storage
 from app.models.user import User
 from app.schemas.misc import AttachmentUploadOut
 
-router = APIRouter(prefix="/api/chat/attachments", tags=["attachments"])
+router = APIRouter(prefix="/chat/attachments", tags=["attachments"])
 
 _MAX_IMAGE_MB = 5
 _MAGIC = {b"\x89PNG": "image/png", b"\xff\xd8\xff": "image/jpeg"}
