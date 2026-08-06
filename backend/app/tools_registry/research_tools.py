@@ -20,6 +20,13 @@ MAX_PAGE_FETCHES = 4
 _PAGE_CHARS = 2500
 _JSON_ARRAY = re.compile(r"\[.*\]", re.DOTALL)
 
+# Inner LLM budgets so the tool's own 120s budget is actually satisfiable:
+# planner 30s + searches (12s each, parallel) + reads (15s each, parallel) +
+# synthesis 60s fits; without these one slow provider call eats the whole cap
+# AFTER all the work is done.
+_PLAN_TIMEOUT_S = 30.0
+_SYNTHESIS_TIMEOUT_S = 60.0
+
 
 async def _plan(question: str) -> list[str]:
     raw = await complete(
@@ -34,6 +41,7 @@ async def _plan(question: str) -> list[str]:
         ],
         temperature=0.2,
         max_tokens=250,
+        overall_timeout_s=_PLAN_TIMEOUT_S,
     )
     match = _JSON_ARRAY.search(raw)
     subs = json.loads(match.group(0)) if match else []
@@ -107,6 +115,7 @@ async def _research(args: dict[str, Any]) -> str:
             ],
             temperature=0.3,
             max_tokens=2048,
+            overall_timeout_s=_SYNTHESIS_TIMEOUT_S,
         )
         log.info("research.done", subs=len(subs), sources=len(sources), pages=len(page_texts))
         return report

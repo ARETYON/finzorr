@@ -19,6 +19,7 @@ from app.ai.completion import stream
 from app.core.logging import log
 from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
 from app.db.session import SessionLocal
+from app.graph.nodes.common import with_instructions
 from app.graph.state import AssistantState
 from app.graph.streaming import emit_frame
 from app.models.price_alert import PriceAlert
@@ -143,11 +144,14 @@ async def memory_node(state: AssistantState) -> AssistantState:
     watchlist = await _get_watchlist(user_id) if user_id else []
     alerts = await _get_alerts(user_id) if user_id else []
     system = SystemMessage(
-        content=render_agent_prompt(
-            "memory_system",
-            user_name=state.get("user_name", "there"),
-            watchlist=", ".join(watchlist) or "(empty)",
-            alerts=", ".join(alerts) or "(none)",
+        content=with_instructions(
+            render_agent_prompt(
+                "memory_system",
+                user_name=state.get("user_name", "there"),
+                watchlist=", ".join(watchlist) or "(empty)",
+                alerts=", ".join(alerts) or "(none)",
+            ),
+            state,
         )
     )
     try:

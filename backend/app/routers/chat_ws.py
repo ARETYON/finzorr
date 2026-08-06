@@ -36,6 +36,13 @@ router = APIRouter(tags=["chat-ws"])
 WS_POLICY_VIOLATION = 1008
 WS_UNAUTHORIZED = 4401
 
+# One in-flight turn per SESSION, across sockets: the per-connection `busy`
+# guard can't stop two tabs running concurrent graph invocations on one
+# thread_id (concurrent checkpoint writes). Single-process by design — the
+# deployment model is one backend container; a Redis SET NX would replace
+# this if that ever changes.
+_active_sessions: set[str] = set()
+
 
 def _origin_allowed(websocket: WebSocket) -> bool:
     origin = websocket.headers.get("origin", "")
@@ -96,6 +103,13 @@ class _Connection:
         if not user_msg:
             await self.send({"type": "error", "message": "empty message"})
             return
+        sid = str(session_id)
+        if sid in _active_sessions:
+            await self.send(
+                {"type": "error", "message": "a reply is already in progress in this chat"}
+            )
+            return
+        _active_sessions.add(sid)
         attachments = [str(a) for a in data.get("attachments", []) if isinstance(a, str)][:1]
         await self.send({"type": "thinking"})
         self.turn_task = asyncio.create_task(self._run(session_id, user_msg, attachments))
@@ -129,6 +143,8 @@ class _Connection:
         except Exception as exc:  # noqa: BLE001 — degrade, keep the socket alive
             log.error("ws.turn.error", error=str(exc))
             await self.send({"type": "error", "message": "assistant error — please retry"})
+        finally:
+            _active_sessions.discard(str(session_id))
 
     def cancel_turn(self) -> bool:
         if self.busy and self.turn_task is not None:

@@ -7,6 +7,7 @@ Adds what raw providers don't have:
   traffic down the free chain instead of silently failing when exhausted.
 """
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
@@ -15,6 +16,7 @@ from app.ai.base import ChatMessage, StreamDone, TextDelta, ToolDefinition, Usag
 from app.ai.registry import default_model, get_provider
 from app.core.config import settings
 from app.core.logging import log
+from app.core.otel import span
 
 OnToken = Callable[[str], Awaitable[None]]
 
@@ -65,20 +67,24 @@ async def _run_stream(
     provider = get_provider(provider_name)
     resolved_model = model or default_model(provider.name)
     done: StreamDone | None = None
-    async for event in provider.chat(
-        messages,
-        model=resolved_model,
-        tools=tools,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        response_format=response_format,
-    ):
-        if isinstance(event, TextDelta) and on_token is not None:
-            await on_token(event.text)
-        elif isinstance(event, StreamDone):
-            done = event
-    if done is None:  # pragma: no cover — providers always emit StreamDone
-        done = StreamDone(text="", tool_calls=[], usage=Usage())
+    with span("llm.call", provider=provider.name, model=resolved_model) as llm_span:
+        async for event in provider.chat(
+            messages,
+            model=resolved_model,
+            tools=tools,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            response_format=response_format,
+        ):
+            if isinstance(event, TextDelta) and on_token is not None:
+                await on_token(event.text)
+            elif isinstance(event, StreamDone):
+                done = event
+        if done is None:  # pragma: no cover — providers always emit StreamDone
+            done = StreamDone(text="", tool_calls=[], usage=Usage())
+        llm_span.set_attribute("prompt_tokens", done.usage.prompt_tokens)
+        llm_span.set_attribute("completion_tokens", done.usage.completion_tokens)
+        llm_span.set_attribute("tool_calls", len(done.tool_calls))
     await _record_usage(provider.name, done.usage)
     log.info(
         "ai.call",
@@ -101,8 +107,27 @@ async def stream(
     temperature: float = 0.6,
     max_tokens: int = 2048,
     response_format: dict[str, Any] | None = None,
+    overall_timeout_s: float | None = None,
 ) -> StreamDone:
-    """Stream a completion; retry once on the fallback provider if it throws."""
+    """Stream a completion; retry once on the fallback provider if it throws.
+
+    `overall_timeout_s` bounds the whole call INCLUDING the fallback retry —
+    callers with their own budget (tools inside a dispatcher timeout) use it
+    so nested budgets actually compose instead of each claiming the full
+    per-request client timeout.
+    """
+    if overall_timeout_s is not None:
+        async with asyncio.timeout(overall_timeout_s):
+            return await stream(
+                messages,
+                on_token=on_token,
+                model=model,
+                provider=provider,
+                tools=tools,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                response_format=response_format,
+            )
     primary = provider or settings.LLM_PROVIDER
     if await _budget_exceeded(primary) and settings.LLM_FALLBACK_PROVIDER:
         log.warning("ai.budget.exceeded", provider=primary)
@@ -156,6 +181,7 @@ async def complete(
     temperature: float = 0.2,
     max_tokens: int = 1024,
     response_format: dict[str, Any] | None = None,
+    overall_timeout_s: float | None = None,
 ) -> str:
     """Non-streaming convenience wrapper returning the full text."""
     done = await stream(
@@ -165,5 +191,6 @@ async def complete(
         temperature=temperature,
         max_tokens=max_tokens,
         response_format=response_format,
+        overall_timeout_s=overall_timeout_s,
     )
     return done.text

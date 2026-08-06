@@ -32,6 +32,8 @@ dependencies = [
     "lxml>=5.2",
     "python-docx>=1.2.0",
     "cryptography>=50.0.0",
+    "opentelemetry-sdk>=1.27",
+    "opentelemetry-exporter-otlp-proto-http>=1.27",
 ]
 
 [dependency-groups]

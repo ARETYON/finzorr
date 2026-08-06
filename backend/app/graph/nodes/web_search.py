@@ -7,6 +7,7 @@ from app.ai.completion import stream
 from app.core.logging import log
 from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
 from app.core.web_search import search
+from app.graph.nodes.common import with_instructions
 from app.graph.state import AssistantState
 from app.graph.streaming import emit_frame
 
@@ -49,7 +50,11 @@ async def web_search_node(state: AssistantState) -> AssistantState:
     try:
         done = await stream(
             [
-                SystemMessage(content=render_agent_prompt("web_synthesis", results=numbered)),
+                SystemMessage(
+                    content=with_instructions(
+                        render_agent_prompt("web_synthesis", results=numbered), state
+                    )
+                ),
                 UserMessage(content=state["user_msg"]),
             ],
             on_token=on_token,

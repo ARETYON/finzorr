@@ -27,26 +27,29 @@ _WEB_HINTS = re.compile(
     re.IGNORECASE,
 )
 _SQL_HINTS = re.compile(
-    r"\b(stocks? (with|having|under|above)|screen(er)?|top \d+|list (all )?stocks?|"
+    r"\b(stocks? (with|having|under|above)|which stocks|screen(er)?|top \d+|"
+    r"list (all )?(stocks?|banks?|companies)|sorted by|"
     r"p/?e (under|below|above|less|greater)|dividend yield (above|over|under)|"
+    r"(roe|eps|pb ratio) (above|over|under|below|greater|less)|"
     r"market cap (above|over|under|between))\b",
     re.IGNORECASE,
 )
 _TOOL_HINTS = re.compile(
-    r"\b(price|quote|trading at|share price|52.week|overview of|fundamentals of|"
+    r"\b(price|quote|chart|trading at|share price|52.week|overview of|fundamentals of|"
     r"history|historical|performance of|volume|my (portfolio|holdings)|"
     r"deep research|research report|run (python|code)|execute (python|code)|"
     r"compute|calculate)\b",
     re.IGNORECASE,
 )
 _RAG_HINTS = re.compile(
-    r"\b(what is|what does|what are|explain|define|meaning of|my (document|pdf|file|"
-    r"contract|report)|uploaded)\b",
+    r"\b(what is|what does|what are|explain|define|meaning of|(search )?my "
+    r"(documents?|pdf|files?|contract|reports?)|uploaded)\b",
     re.IGNORECASE,
 )
 _MEMORY_HINTS = re.compile(
-    r"\b(watch\s?list|track|untrack|my list|alert me|set (an? )?alert|notify me|"
-    r"every (day|week|morning|evening)|daily at|remind me)\b",
+    r"\b(watch\s?list|track|untrack|my list|alert me|set (an? )?(price )?alert|"
+    r"price alert|notify me|every (day|week|morning|evening)|daily at|remind me|"
+    r"remember (that|my|i))\b",
     re.IGNORECASE,
 )
 
@@ -109,6 +112,20 @@ def _parse_decision(raw: str) -> dict[str, Any]:
     return {}
 
 
+_CONTEXT_CHARS = 200  # per prior message, in the routing prompt
+
+
+def _routing_context(state: AssistantState) -> str:
+    """The previous exchange, truncated — follow-ups like "and its P/E?"
+    misroute deterministically when the router sees only the new message."""
+    history = state.get("messages", [])
+    prior = [m for m in history if m.get("role") in ("user", "assistant")][-2:]
+    if not prior:
+        return ""
+    lines = [f"{m['role']}: {str(m.get('content', ''))[:_CONTEXT_CHARS]}" for m in prior]
+    return "Previous exchange (context only):\n" + "\n".join(lines) + "\n\n"
+
+
 async def plan_and_route(state: AssistantState) -> AssistantState:
     """One routing LLM call with the keyword router as safety net."""
     user_msg = state["user_msg"]
@@ -118,7 +135,7 @@ async def plan_and_route(state: AssistantState) -> AssistantState:
         raw = await complete(
             [
                 SystemMessage(content=render_agent_prompt("supervisor_planner")),
-                UserMessage(content=user_msg),
+                UserMessage(content=f"{_routing_context(state)}Message to route: {user_msg}"),
             ],
             model=settings.SUPERVISOR_MODEL or None,
             temperature=0.0,

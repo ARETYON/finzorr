@@ -24,6 +24,9 @@ _TIMEOUT_S = 15
 _PULL_TIMEOUT_S = 120
 _MAX_OUTPUT = 4000
 _IMAGE = "python:3.12-slim"
+# The model can fan out parallel run_python calls via dispatch_all — cap how
+# many containers exist at once (each holds 256MB + 1 CPU of the tiny VM).
+_concurrency = asyncio.Semaphore(2)
 
 
 async def _ensure_image() -> str | None:
@@ -61,41 +64,52 @@ async def _run_python(args: dict[str, Any]) -> str:
     code = str(args.get("code", ""))
     if not code.strip():
         return "Error: 'code' is required."
-    pull_error = await _ensure_image()
-    if pull_error:
-        return pull_error
-    container = f"finzorr-sandbox-{uuid.uuid4().hex[:12]}"
-    with tempfile.TemporaryDirectory() as workdir:
-        script = Path(workdir, "main.py")
-        script.write_text(code)
-        # The container runs as nobody (65534) — the bind mount must be
-        # world-readable or the sandboxed process can't open its own script.
-        Path(workdir).chmod(0o755)
-        script.chmod(0o644)
-        process = await asyncio.create_subprocess_exec(
-            "docker", "run", "--rm",
-            "--name", container,
-            "--network=none",
-            "--memory=256m",
-            "--cpus=1",
-            "--pids-limit=64",
-            "--read-only",
-            "--user", "65534:65534",
-            "--cap-drop=ALL",
-            "--security-opt=no-new-privileges",
-            "--tmpfs", "/tmp:size=16m",  # noqa: S108 — inside the container
-            "-v", f"{workdir}:/work:ro",
-            _IMAGE, "python", "/work/main.py",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        try:
-            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=_TIMEOUT_S)
-        except TimeoutError:
-            await _kill_container(container)
-            process.kill()
-            await process.wait()
-            return f"Error: execution exceeded {_TIMEOUT_S}s."
+    async with _concurrency:
+        pull_error = await _ensure_image()
+        if pull_error:
+            return pull_error
+        container = f"finzorr-sandbox-{uuid.uuid4().hex[:12]}"
+        with tempfile.TemporaryDirectory() as workdir:
+            script = Path(workdir, "main.py")
+            script.write_text(code)
+            # The container runs as nobody (65534) — the bind mount must be
+            # world-readable or the sandboxed process can't open its own script.
+            Path(workdir).chmod(0o755)
+            script.chmod(0o644)
+            process = await asyncio.create_subprocess_exec(
+                "docker", "run", "--rm",
+                "--name", container,
+                "--network=none",
+                "--memory=256m",
+                "--cpus=1",
+                "--pids-limit=64",
+                "--read-only",
+                "--user", "65534:65534",
+                "--cap-drop=ALL",
+                "--security-opt=no-new-privileges",
+                "--tmpfs", "/tmp:size=16m",  # noqa: S108 — inside the container
+                "-v", f"{workdir}:/work:ro",
+                _IMAGE, "python", "/work/main.py",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            finished = False
+            try:
+                stdout, stderr = await asyncio.wait_for(
+                    process.communicate(), timeout=_TIMEOUT_S
+                )
+                finished = True
+            except TimeoutError:
+                return f"Error: execution exceeded {_TIMEOUT_S}s."
+            finally:
+                if not finished:
+                    # Covers the inner timeout AND outer cancellation (user
+                    # Stop, dispatcher cap) — killing only the docker CLIENT
+                    # leaves the container burning CPU forever. Shielded so a
+                    # cancelled task still completes the kill.
+                    await asyncio.shield(_kill_container(container))
+                    process.kill()
+                    await process.wait()
     out = stdout.decode(errors="replace")[:_MAX_OUTPUT]
     err = stderr.decode(errors="replace")[:1000]
     log.info("code_interpreter.ran", exit_code=process.returncode)

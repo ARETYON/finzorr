@@ -12,6 +12,8 @@ from app.ai.base import SystemMessage, UserMessage
 from app.ai.completion import stream
 from app.core.logging import log
 from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
+from app.core.untrusted import wrap_untrusted
+from app.graph.nodes.common import with_instructions
 from app.graph.state import AssistantState
 from app.graph.streaming import emit_frame
 from app.rag.embeddings import embed_query
@@ -46,7 +48,9 @@ def _format_excerpts(hits: list[Hit]) -> str:
     blocks = []
     for i, hit in enumerate(hits, start=1):
         source = hit.title if hit.tenant == GLOSSARY_TENANT else f"{hit.title} · {hit.locator}"
-        blocks.append(f"<<excerpt [{i}] source=\"{source}\">>\n{hit.text}\n<<end excerpt>>")
+        blocks.append(
+            wrap_untrusted(hit.text, "excerpt", header_extra=f'[{i}] source="{source}"')
+        )
     return "\n\n".join(blocks)
 
 
@@ -89,7 +93,9 @@ async def rag_node(state: AssistantState) -> AssistantState:
         )
     else:
         system = SystemMessage(
-            content=render_agent_prompt("rag_system", excerpts=_format_excerpts(hits))
+            content=with_instructions(
+                render_agent_prompt("rag_system", excerpts=_format_excerpts(hits)), state
+            )
         )
     try:
         done = await stream(

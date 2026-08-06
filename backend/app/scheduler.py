@@ -59,18 +59,39 @@ async def _already(key: str, ttl_s: int = DEDUPE_TTL_S) -> bool:
         return True
 
 
-async def _briefing_session(db: AsyncSession, user_id: uuid.UUID) -> ChatSession:
+async def _release(key: str) -> None:
+    """Free a dedupe key after a failed run so the next tick retries — the
+    key is claimed BEFORE the work, and without release one transient error
+    would silently skip that briefing/task for the whole day."""
+    try:
+        from app.services.redis_client import get_redis
+
+        await get_redis().delete(key)
+    except Exception:  # noqa: BLE001 — next-day TTL expiry is the backstop
+        log.warning("scheduler.dedupe_release_failed", key=key)
+
+
+async def _named_session(db: AsyncSession, user_id: uuid.UUID, title: str) -> ChatSession:
+    """Find-or-create the user's session with this exact title."""
     result = await db.execute(
-        select(ChatSession).where(
-            ChatSession.user_id == user_id, ChatSession.title == BRIEFING_TITLE
-        )
+        select(ChatSession).where(ChatSession.user_id == user_id, ChatSession.title == title)
     )
     session = result.scalars().first()
     if session is None:
-        session = ChatSession(user_id=user_id, title=BRIEFING_TITLE)
+        session = ChatSession(user_id=user_id, title=title)
         db.add(session)
         await db.flush()
     return session
+
+
+async def _briefing_session(db: AsyncSession, user_id: uuid.UUID) -> ChatSession:
+    return await _named_session(db, user_id, BRIEFING_TITLE)
+
+
+def _task_session_title(task: ScheduledTask) -> str:
+    """Each scheduled task gets its OWN thread — running autonomous turns
+    inside the Briefing thread mixed them into its checkpointed context."""
+    return f"⏰ {task.prompt[:40]}"
 
 
 async def _post_message(user_id: uuid.UUID, content: str, route: str) -> None:
@@ -115,7 +136,8 @@ async def _run_briefings(now: datetime) -> None:
         result = await db.execute(select(WatchlistItem.user_id).distinct())
         user_ids = [row[0] for row in result]
     for user_id in user_ids:
-        if await _already(f"briefing:{user_id}:{now:%Y%m%d}"):
+        key = f"briefing:{user_id}:{now:%Y%m%d}"
+        if await _already(key):
             continue
         try:
             async with SessionLocal() as db:
@@ -128,10 +150,17 @@ async def _run_briefings(now: datetime) -> None:
             log.info("scheduler.briefing_sent", user_id=str(user_id))
         except Exception as exc:  # noqa: BLE001
             log.warning("scheduler.briefing_failed", user_id=str(user_id), error=str(exc))
+            await _release(key)  # retry on the next tick instead of skipping the day
 
 
 async def _run_alerts(now: datetime) -> None:
-    if not _market_open(now) or now.minute % ALERT_INTERVAL_MIN != 0:
+    if not _market_open(now):
+        return
+    # Window-key dedupe instead of minute-modulo equality: any tick inside a
+    # 5-min window runs the check exactly once even when slow ticks drift
+    # past the modulo minute (and it's multi-worker safe).
+    window = f"alerts:{now:%Y%m%d%H}:{now.minute // ALERT_INTERVAL_MIN}"
+    if await _already(window, ttl_s=ALERT_INTERVAL_MIN * 60 + 30):
         return
     from app.market_data.yfinance_provider import provider
 
@@ -194,11 +223,12 @@ async def _run_tasks(now: datetime) -> None:
         result = await db.execute(select(ScheduledTask).where(ScheduledTask.active.is_(True)))
         tasks = list(result.scalars())
     for task in tasks:
-        if not _task_due(task, now) or await _already(f"task:{task.id}:{now:%Y%m%d}"):
+        key = f"task:{task.id}:{now:%Y%m%d}"
+        if not _task_due(task, now) or await _already(key):
             continue
         try:
             async with SessionLocal() as db:
-                session = await _briefing_session(db, task.user_id)
+                session = await _named_session(db, task.user_id, _task_session_title(task))
                 await db.commit()
                 session_id = session.id
                 user = await db.get(User, task.user_id)
@@ -213,6 +243,7 @@ async def _run_tasks(now: datetime) -> None:
             log.info("scheduler.task_ran", task_id=str(task.id))
         except Exception as exc:  # noqa: BLE001
             log.warning("scheduler.task_failed", task_id=str(task.id), error=str(exc))
+            await _release(key)  # retry on the next tick instead of skipping the day
 
 
 async def scheduler_loop() -> None:

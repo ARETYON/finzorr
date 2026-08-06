@@ -72,6 +72,11 @@ class Settings(BaseSettings):
     # --- Turn execution ---
     TURN_TIMEOUT_S: int = 300  # wall-clock ceiling for one assistant turn
 
+    # --- Observability ---
+    # OTLP traces endpoint (e.g. self-hosted Phoenix http://localhost:6006/v1/traces);
+    # empty disables tracing entirely
+    OTEL_EXPORTER_OTLP_ENDPOINT: str = ""
+
     # --- Web search ---
     TAVILY_API_KEY: str = ""
     SEARXNG_URL: str = ""

@@ -32,6 +32,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """Configure logging, register optional tool families, log lifecycle."""
     configure_logging()
     log.info("app.startup", env=settings.APP_ENV)
+    from app.core.otel import setup_tracing
+
+    setup_tracing()
     # Optional tool families — absence of keys/config is graceful, never fatal.
     try:
         from app.mcp_client.github_client import register_github_tools

@@ -6,6 +6,7 @@ from app.ai.base import SystemMessage, UserMessage
 from app.ai.completion import stream
 from app.core.logging import log
 from app.core.prompt_registry import render_agent_prompt
+from app.graph.nodes.common import with_instructions
 from app.graph.state import AssistantState
 from app.graph.streaming import emit_frame
 from app.nl2sql.agent import rows_preview, run_query
@@ -48,7 +49,9 @@ async def nl2sql_node(state: AssistantState) -> AssistantState:
         )
         done = await stream(
             [
-                SystemMessage(content="You are a precise data narrator."),
+                SystemMessage(
+                    content=with_instructions("You are a precise data narrator.", state)
+                ),
                 UserMessage(content=prompt),
             ],
             on_token=on_token,

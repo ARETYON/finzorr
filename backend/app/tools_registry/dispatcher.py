@@ -12,6 +12,7 @@ from typing import Any
 
 from app.ai.base import ToolDefinition
 from app.core.logging import log
+from app.core.otel import span
 
 ToolHandler = Callable[[dict[str, Any]], Awaitable[str]]
 
@@ -45,14 +46,19 @@ async def dispatch(name: str, arguments: dict[str, Any]) -> str:
     if handler is None:
         return f"Error: unknown tool '{name}'."
     timeout_s = _timeouts.get(name, _DEFAULT_TIMEOUT_S)
-    try:
-        return await asyncio.wait_for(handler(arguments), timeout=timeout_s)
-    except TimeoutError:
-        log.warning("tool.timeout", tool=name)
-        return f"Error: tool '{name}' timed out."
-    except Exception as exc:  # noqa: BLE001 — the never-raise contract
-        log.warning("tool.error", tool=name, error=str(exc))
-        return f"Error: tool '{name}' failed — {type(exc).__name__}."
+    with span("tool", tool=name) as tool_span:
+        try:
+            result = await asyncio.wait_for(handler(arguments), timeout=timeout_s)
+            tool_span.set_attribute("ok", not result.startswith("Error:"))
+            return result
+        except TimeoutError:
+            log.warning("tool.timeout", tool=name)
+            tool_span.set_attribute("ok", False)
+            return f"Error: tool '{name}' timed out."
+        except Exception as exc:  # noqa: BLE001 — the never-raise contract
+            log.warning("tool.error", tool=name, error=str(exc))
+            tool_span.set_attribute("ok", False)
+            return f"Error: tool '{name}' failed — {type(exc).__name__}."
 
 
 async def dispatch_all(calls: list[tuple[str, dict[str, Any]]]) -> list[str]:
