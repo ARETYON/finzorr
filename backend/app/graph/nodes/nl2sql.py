@@ -6,7 +6,7 @@ from app.ai.base import SystemMessage, UserMessage
 from app.ai.completion import stream
 from app.core.logging import log
 from app.core.prompt_registry import render_agent_prompt
-from app.graph.nodes.common import task_for, with_instructions
+from app.graph.nodes.common import step_context, task_for, with_instructions
 from app.graph.state import AssistantState
 from app.graph.streaming import emit_frame
 from app.nl2sql.agent import rows_preview, run_query
@@ -43,7 +43,7 @@ async def nl2sql_node(state: AssistantState) -> AssistantState:
     try:
         prompt = render_agent_prompt(
             "nl2sql_answer",
-            question=task_for(state),
+            question=task_for(state) + step_context(state),
             row_count=str(len(result.result.rows)),
             rows=str(rows) if rows else f"[] ({STALE_EMPTY_HINT})",
         )

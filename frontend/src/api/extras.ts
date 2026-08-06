@@ -43,3 +43,12 @@ export async function fetchShared(token: string): Promise<SharedChat> {
   const { data } = await api.get<SharedChat>(`/api/share/${token}`)
   return data
 }
+
+export async function fetchPendingApproval(
+  sessionId: string,
+): Promise<{ pending: boolean; tools: { name: string }[] }> {
+  const { data } = await api.get<{ pending: boolean; tools: { name: string }[] }>(
+    `/api/chat/sessions/${sessionId}/pending-approval`,
+  )
+  return data
+}

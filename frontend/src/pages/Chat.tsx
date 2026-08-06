@@ -5,7 +5,7 @@ import ArtifactPanel from '../components/chat/ArtifactPanel'
 import { extractArtifact, type Artifact } from '../lib/artifact'
 import PersonaPicker from '../components/chat/PersonaPicker'
 import ChatSidebar from '../components/chat/ChatSidebar'
-import { createShareLink, revokeShareLinks } from '../api/extras'
+import { createShareLink, fetchPendingApproval, revokeShareLinks } from '../api/extras'
 import MessageBubble from '../components/chat/MessageBubble'
 import MessageInput from '../components/chat/MessageInput'
 import { useChatSocket } from '../hooks/useChatSocket'
@@ -37,6 +37,16 @@ export default function Chat() {
 
   useEffect(() => {
     setHasShareLink(false) // revoke button is per-conversation
+    setApproval(null)
+    if (activeSessionId) {
+      // a reload mid-approval must re-surface the parked banner
+      void fetchPendingApproval(activeSessionId)
+        .then((p) => {
+          if (p.pending) setApproval({ tools: p.tools, sessionId: activeSessionId })
+          return undefined
+        })
+        .catch(() => undefined)
+    }
   }, [activeSessionId])
 
   useEffect(() => {

@@ -1,6 +1,7 @@
 """Session CRUD, message history, and feedback endpoints (all user-scoped)."""
 
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import delete, select
@@ -127,6 +128,22 @@ async def list_messages(
         .offset(page.offset)
     )
     return list(reversed(list(result.scalars())))
+
+
+@router.get("/sessions/{session_id}/pending-approval")
+async def pending_approval(
+    session_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Re-discover a parked HITL approval after a page reload — without this
+    a refresh mid-approval orphans the turn (the banner lived only in React
+    state)."""
+    await _owned_session(db, session_id, user)
+    from app.graph.turn import get_parked_approval
+
+    parked = await get_parked_approval(session_id)
+    return {"pending": parked is not None, "tools": (parked or {}).get("tools", [])}
 
 
 @router.post(

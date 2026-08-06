@@ -167,6 +167,15 @@ class _Connection:
             await self.send({"type": "stopped"})
         except Exception as exc:  # noqa: BLE001 — degrade, keep the socket alive
             log.error("ws.turn.error", error=str(exc))
+            if "".join(partial).strip():
+                # streamed tokens must not vanish just because the turn died
+                with contextlib.suppress(Exception):
+                    await record_out_of_band_turn(
+                        session_id,
+                        user_msg,
+                        "".join(partial) + "\n\n_(error — reply incomplete)_",
+                        turn_id=turn_id,
+                    )
             await release_turn(str(session_id))
             await self.send({"type": "error", "message": "assistant error — please retry"})
         finally:

@@ -8,7 +8,7 @@ from app.core.logging import log
 from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
 from app.core.untrusted import wrap_untrusted
 from app.core.web_search import search
-from app.graph.nodes.common import task_for, with_instructions
+from app.graph.nodes.common import step_context, task_for, with_instructions
 from app.graph.state import AssistantState
 from app.graph.streaming import emit_frame
 
@@ -61,7 +61,7 @@ async def web_search_node(state: AssistantState) -> AssistantState:
                         render_agent_prompt("web_synthesis", results=numbered), state
                     )
                 ),
-                UserMessage(content=task_for(state)),
+                UserMessage(content=task_for(state) + step_context(state)),
             ],
             on_token=on_token,
             temperature=0.3,

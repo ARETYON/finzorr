@@ -37,10 +37,20 @@ async def advance_node(state: AssistantState) -> AssistantState:
         next_step = steps[next_index]
         result["route"] = next_step["route"]
         result["current_task"] = next_step["task"]
-        # each step runs a fresh tool loop if it routes to tools
+        # each step starts CLEAN: without these resets, step 1's citations/
+        # chart/sources bleed into step 2's record and compose duplicates them
+        result["final_text"] = ""
+        result["citations"] = []
+        result["tool_calls"] = []
+        result["sources"] = []
+        result["chart"] = {}
+        result["data_as_of"] = ""
         result["tool_iterations"] = 0
         result["tool_transcript"] = []
         result["pending_tool_calls"] = []
+        result["research_subs"] = []
+        result["research_sources"] = []
+        result["research_pages"] = []
         log.info("plan.advance", step=next_index + 1, of=len(steps), route=next_step["route"])
         emit_frame(
             {

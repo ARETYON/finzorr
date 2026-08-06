@@ -213,6 +213,8 @@ async def run_turn(
     if not has_checkpointer:
         turn_input["messages"] = await _load_history(session_id)
     config = {"configurable": {"thread_id": str(session_id)}}
+    if has_checkpointer:
+        await _clear_parked(graph, config, session_id)
     try:
         out = await _drive_graph(graph, turn_input, config, session_id, on_frame)
     except TimeoutError:
@@ -227,6 +229,50 @@ async def run_turn(
     return _response_payload(session_id, out)
 
 
+async def get_parked_approval(session_id: uuid.UUID) -> dict[str, Any] | None:
+    """The pending HITL interrupt on this thread, if any — lets a reloaded
+    client re-discover an approval banner instead of orphaning the turn."""
+    graph, has_checkpointer = await get_graph()
+    if not has_checkpointer:
+        return None
+    config = {"configurable": {"thread_id": str(session_id)}}
+    try:
+        state = await graph.aget_state(config)
+    except Exception:  # noqa: BLE001 — no thread yet
+        return None
+    for task in getattr(state, "tasks", []) or []:
+        for intr in getattr(task, "interrupts", []) or []:
+            value = getattr(intr, "value", None)
+            if isinstance(value, dict) and value.get("tools"):
+                return {"tools": value["tools"], "user_msg": state.values.get("user_msg", "")}
+    return None
+
+
+async def _clear_parked(graph: Any, config: dict[str, Any], session_id: uuid.UUID) -> None:
+    """A NEW message on a thread with a parked interrupt abandons the parked
+    turn cleanly — otherwise the pending task lingers on the thread forever.
+    The abandoned exchange is persisted so the user's message isn't lost."""
+    try:
+        state = await graph.aget_state(config)
+        if not getattr(state, "next", ()):
+            return
+        parked_msg = str(state.values.get("user_msg", ""))
+        log.info("turn.parked_abandoned", session_id=str(session_id))
+        if parked_msg:
+            # BOTH stores — the parked user message must survive in the DB
+            # transcript too, not only in the model's memory
+            await record_out_of_band_turn(
+                session_id,
+                parked_msg,
+                "_(approval request superseded by a new message)_",
+                turn_id=str(state.values.get("turn_id", "")),
+            )
+        else:
+            await graph.aupdate_state(config, {"pending_tool_calls": []}, as_node="persist")
+    except Exception as exc:  # noqa: BLE001 — best-effort cleanup
+        log.warning("turn.clear_parked_failed", error=str(exc))
+
+
 async def resume_turn(
     session_id: uuid.UUID,
     approved: bool,
@@ -238,19 +284,33 @@ async def resume_turn(
     graph, has_checkpointer = await get_graph()
     if not has_checkpointer:
         return _error_payload(session_id, "nothing to approve — no parked turn")
+    # A stale approval frame must NOT replay the previous answer — langgraph
+    # happily resumes a thread with no pending interrupt to its last state.
+    parked = await get_parked_approval(session_id)
+    if parked is None:
+        return _error_payload(session_id, "nothing to approve — no parked turn")
+    parked_user_msg = str(parked.get("user_msg", "")) or "(approval decision)"
     config = {"configurable": {"thread_id": str(session_id)}}
     try:
         out = await _drive_graph(
             graph, Command(resume=approved), config, session_id, on_frame
         )
     except TimeoutError:
-        return await _timeout_payload(session_id, "(approval decision)", "")
-    except Exception as exc:  # noqa: BLE001 — e.g. no pending interrupt on the thread
+        return await _timeout_payload(session_id, parked_user_msg, uuid.uuid4().hex)
+    except Exception as exc:  # noqa: BLE001
         log.warning("turn.resume_failed", session_id=str(session_id), error=str(exc))
         return _error_payload(session_id, "nothing to approve — no parked turn")
     if payload := _interrupt_payload(session_id, out):
         return payload  # a later step interrupted again
     log.info("turn.resumed", session_id=str(session_id), approved=approved)
+    from app.memory.facts import extract_and_store
+
+    spawn(
+        extract_and_store(
+            str(out.get("user_id", "")), parked_user_msg, out.get("final_text", "")
+        ),
+        name="memory.extract",
+    )
     return _response_payload(session_id, out)
 
 
@@ -263,10 +323,13 @@ async def _drive_graph(
 ) -> AssistantState:
     """Stream one graph invocation under the per-turn deadline."""
     out: AssistantState = {}
+    # explicit recursion ceiling: langgraph 1.x's default (10007) is no
+    # backstop; a 3-step plan with full tool loops fits comfortably in 50
+    run_config = {**config, "recursion_limit": 50}
     async with asyncio.timeout(settings.TURN_TIMEOUT_S):
         with span("turn", session_id=str(session_id)) as turn_span:
             async for mode, chunk in graph.astream(
-                graph_input, config=config, stream_mode=["custom", "values"]
+                graph_input, config=run_config, stream_mode=["custom", "values"]
             ):
                 if mode == "custom":
                     if on_frame is not None:

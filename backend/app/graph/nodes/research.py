@@ -18,7 +18,7 @@ from app.core.logging import log
 from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
 from app.core.untrusted import wrap_untrusted
 from app.core.web_search import search as web_search
-from app.graph.nodes.common import task_for, with_instructions
+from app.graph.nodes.common import step_context, task_for, with_instructions
 from app.graph.state import AssistantState
 from app.graph.streaming import emit_frame
 
@@ -50,7 +50,7 @@ def _progress(text: str) -> None:
 
 async def research_plan_node(state: AssistantState) -> AssistantState:
     """Stage 1: decompose the question into ≤4 searchable sub-questions."""
-    question = task_for(state)
+    question = task_for(state) + step_context(state)
     _progress("🔎 Planning research…\n")
     subs = [question]
     try:
@@ -116,7 +116,7 @@ async def research_read_node(state: AssistantState) -> AssistantState:
 
 async def research_synthesize_node(state: AssistantState) -> AssistantState:
     """Stage 4: stream the cited report from everything gathered."""
-    question = task_for(state)
+    question = task_for(state) + step_context(state)
     sources = state.get("research_sources", [])
     numbered = wrap_untrusted(
         "\n".join(

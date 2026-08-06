@@ -883,7 +883,11 @@ Every structural item the final agentic re-review named is now built:
 | Evals are routing-only, dataset co-authored with the regexes | Injection eval (63 adversarial fence checks, CI-gated 100%); 20-case held-out paraphrase split (keyword floor scores 15% there — reported honestly; generalization is the LLM router's job); grounded_eval for citation validity; routing floor 94% over 50 cases, gated at 90% in CI. |
 | Dead `routing` protocol frame | Emitted per plan step with `step/of`; frontend shows a live step status. |
 
-133 backend + 11 frontend tests; all gates green; multi-step, HITL approve/decline, and staged research verified live end-to-end.
+134 backend + 11 frontend tests; all gates green; multi-step, HITL approve/decline, and staged research verified live end-to-end.
+
+**Final verdict (adversarial re-review): agentic/LangGraph 8.3/10** (5 → 6.5 → 7.5 → 8.3). Ten of thirteen items verified closed in code; the HITL roundtrip test was called "the single most credible test in the repo". Its new findings were fixed the same day: step output feed-forward completed on all seven routes (was four); cross-step state bleed (duplicate citations via compose) closed with full per-step resets; the parked-approval lifecycle finished — a rediscovery endpoint re-surfaces the banner after reload, a new message cleanly abandons a parked turn with BOTH stores updated, stale approvals error instead of replaying the previous answer, resume timeouts persist the real user message, resumed turns feed memory; generic errors mid-turn persist streamed partials; an explicit recursion limit (50) backs the turn deadline; and the flagship planner now has the end-to-end test the reviewer said was missing (two scripted steps through the real compiled graph, asserting feed-forward, resets, routing frames, and compose).
+
+The reviewer's stated path to 9+: replanning on step failure, parallel/DAG step execution, plan-quality evals with an LLM judge, `BaseStore`-backed memory, cache policies, and burn-in evidence — the post-launch frontier, recorded in §20.
 
 ## 20. Phase 2 roadmap (everything deliberately deferred, in one place)
 
