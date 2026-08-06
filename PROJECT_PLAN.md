@@ -826,7 +826,42 @@ An adversarial two-reviewer audit (agentic/LangGraph architecture · general eng
 | Enforcement gap | mypy strict configured but never run; TS `strict` off; frontend lint 2 rules & unenforced; security audits `\|\| true` | mypy `--strict` green in CI; TS strict on (0 errors); oxlint expanded + in CI; audits enforced (react-router bumped to patched v8.3.0 for a real CVE) |
 | Test gap | Zero coverage of routers, auth, ownership boundaries | `conftest.py` (real Postgres test DB, two authenticated users) + 16 router tests incl. every cross-tenant 404; live Postgres service in CI |
 
-Known accepted trade-offs (documented, not hidden): the tool loop stays inside `tools_node` rather than as graph nodes (resumable tool trajectories are a Phase-2 refactor); the `messages` channel is prompt-windowed but not checkpoint-pruned; REST pagination and share-link expiry remain on the Phase-2 list.
+Known accepted trade-offs at the time (all closed by §19.8): the tool loop stayed inside one node; the `messages` channel wasn't checkpoint-pruned; REST pagination and share-link expiry were deferred.
+
+## 19.8 Grade-10 wave (every remaining review finding, closed)
+
+After re-review scored the hardened codebase 6.5/10 (agentic) and 7.5/10 (general), the instruction changed from "fix the priorities" to "close everything". This wave removed every concrete finding both reviewers had left, including the trade-offs §19.7 had accepted.
+
+### Agentic architecture (the 6.5 ceiling, removed)
+
+| Was | Now |
+|---|---|
+| Agent loop hand-rolled inside one opaque node — nothing checkpointed, no resume, invisible to `aget_state` | `tools_plan` ⇄ `tools_exec` as real graph nodes; transcript + pending calls live in graph state; every round-trip is its own checkpointed superstep |
+| `messages` channel grew unbounded (O(n²) checkpoint storage) | Capped reducer (newest 60); prompt window unchanged |
+| Streaming via a process-global callback dict (two tabs stole each other's tokens; blocked multi-worker) | Graph-native: nodes emit via `get_stream_writer()`, `run_turn` consumes `astream(stream_mode=custom)` per invocation; registry deleted |
+| No per-turn wall clock (worst case ~25 min holding a WS slot) | `asyncio.timeout(TURN_TIMEOUT_S=300)`; timeout persists a marker turn |
+| Cancel split-brain: DB got the partial, checkpointer didn't | `record_out_of_band_turn` writes BOTH stores (`aupdate_state(as_node="persist")`) — verified live: the model recalls a cancelled exchange |
+| Nested timeouts couldn't compose (deep research's inner LLM calls could each eat its whole budget) | `overall_timeout_s` on completion; planner 30s / synthesis 60s inner budgets |
+| Sandbox orphaned containers on user cancel | `docker kill` in a shielded `finally` (every exit path) + Semaphore(2) container cap |
+| Fence-escape injection (payload containing the closing delimiter) | `core/untrusted.wrap_untrusted` neutralizes fence tokens; used for pages, excerpts, memories, email |
+| Alert checks still used minute-modulo (drift-skipped windows); one failure skipped a briefing's whole day | 5-min window dedupe keys; dedupe keys released on failure for next-tick retry |
+| Persona/custom-instructions/memory applied on only 2 of 6 routes | `with_instructions` on ALL routes |
+| Supervisor routed on the bare message (follow-ups misrouted) | Routing prompt includes the previous exchange; keyword floor improved 81% → 94% (measured) |
+| Scheduled tasks polluted the Briefing thread's checkpointed context | Own "⏰ <prompt>" session per task |
+| Zero tracing, zero evals | OTel spans (turn/llm.call/tool) gated on `OTEL_EXPORTER_OTLP_ENDPOINT` (Phoenix-ready); `evals/routing_eval.py` — 48-case labelled routing dataset, offline + `--live` |
+| Two sockets could run concurrent invocations on one thread | Per-session in-flight guard |
+
+### API & data layer
+
+Pagination (`limit≤200`/`offset`) on every list endpoint incl. the public share view · share links expire (`SHARE_TTL_DAYS=30`) and are revocable (`DELETE …/share`) · trigram GIN index behind chat search + composite indexes on every hot query path · uniform error envelope (`X-Request-ID` on every response; 500s return `{detail, request_id}`) · `response_model` on every JSON endpoint · uploads read chunked with early abort, rejected ingests delete their blob, upload rate limiting.
+
+### Enforcement, tests, structure
+
+`alembic upgrade head` + `check` + full downgrade/upgrade roundtrip run in CI · mypy strict without the global `ignore_missing_imports` (explicit shrinking override list), `tests/` typechecked · TS adds `noUncheckedIndexedAccess` + `exactOptionalPropertyTypes` (0 errors) · oxlint warnings-as-errors in CI · coverage gate 50% · 24 regression tests locking in every §19.7 security property (NL2SQL bypasses, SSRF redirect chain via respx, dispatcher timeouts, fallback token suppression, fact shaping, scheduler catch-up, spawn tracking, turn deadline, cancel-coherence against a live checkpointer) · the real lifespan boots in a test · first-ever frontend suite (vitest + testing-library: artifact parsing, settings persistence, WS reconnect-leak regression, offline queue) wired into CI · `services/` stub dissolved into `core/` · SettingsModal is a real dialog (focus trap, Escape, aria) + `aria-live` streaming region · conftest refuses non-`_test` databases · `SECURITY.md` documents the enforced-audit triage policy · frontend README rewritten.
+
+Backend: 101 tests · Frontend: 11 tests · all gates green.
+
+Honest residual (cannot be closed by code): "10/10 vs industry production standards" also implies burn-in under real traffic and an on-call/operations history that only running in production provides. Everything reachable by engineering is done.
 
 ## 20. Phase 2 roadmap (everything deliberately deferred, in one place)
 
