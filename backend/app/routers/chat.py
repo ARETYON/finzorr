@@ -1,7 +1,6 @@
 """Session CRUD, message history, and feedback endpoints (all user-scoped)."""
 
 import uuid
-from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import delete, select
@@ -15,7 +14,7 @@ from app.models.feedback import Feedback
 from app.models.message import Message
 from app.models.user import User
 from app.schemas.chat import FeedbackIn, MessageOut, SessionOut, SessionRenameIn
-from app.schemas.misc import FeedbackCreateOut, SearchHitOut
+from app.schemas.misc import FeedbackCreateOut, PendingApprovalOut, SearchHitOut
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -130,12 +129,12 @@ async def list_messages(
     return list(reversed(list(result.scalars())))
 
 
-@router.get("/sessions/{session_id}/pending-approval")
+@router.get("/sessions/{session_id}/pending-approval", response_model=PendingApprovalOut)
 async def pending_approval(
     session_id: uuid.UUID,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> dict[str, Any]:
+) -> PendingApprovalOut:
     """Re-discover a parked HITL approval after a page reload — without this
     a refresh mid-approval orphans the turn (the banner lived only in React
     state)."""
@@ -143,7 +142,9 @@ async def pending_approval(
     from app.graph.turn import get_parked_approval
 
     parked = await get_parked_approval(session_id)
-    return {"pending": parked is not None, "tools": (parked or {}).get("tools", [])}
+    return PendingApprovalOut(
+        pending=parked is not None, tools=(parked or {}).get("tools", [])
+    )
 
 
 @router.post(

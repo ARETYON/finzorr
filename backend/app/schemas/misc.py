@@ -76,3 +76,10 @@ class ReadyOut(BaseModel):
     status: str
     postgres: str
     redis: str
+
+
+# --- HITL approvals ---
+
+class PendingApprovalOut(BaseModel):
+    pending: bool
+    tools: list[dict[str, object]]
