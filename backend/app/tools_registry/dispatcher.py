@@ -10,6 +10,8 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from langsmith import traceable
+
 from app.ai.base import ToolDefinition
 from app.core.logging import log
 from app.core.otel import span
@@ -84,6 +86,19 @@ async def dispatch(name: str, arguments: dict[str, Any]) -> str:
     if (validation_error := validate_arguments(_definitions[name], arguments)) is not None:
         log.warning("tool.bad_arguments", tool=name)
         return validation_error
+    # each tool call is a first-class LangSmith run named tool.<name> —
+    # langsmith_extra carries the dynamic name (traceable's name= is static)
+    return await _dispatch_traced(
+        name, arguments, langsmith_extra={"name": f"tool.{name}"}
+    )
+
+
+@traceable(run_type="tool")
+async def _dispatch_traced(name: str, arguments: dict[str, Any]) -> str:
+    """Timeout-bounded execution; the `Error:` prefix in the returned string
+    is the failure signal (the never-raise contract keeps run status green —
+    filter on output text, not status)."""
+    handler = _handlers[name]
     timeout_s = _timeouts.get(name, _DEFAULT_TIMEOUT_S)
     with span("tool", tool=name) as tool_span:
         try:

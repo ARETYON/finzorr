@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from typing import Any, cast
 
 from langgraph.types import Overwrite
+from langsmith import traceable
 from sqlalchemy import select
 
 from app.core.config import settings
@@ -58,10 +59,13 @@ async def _load_instructions(user_id: uuid.UUID, session_id: uuid.UUID) -> str:
     return "\n".join(p for p in parts if p).strip()
 
 
+@traceable(run_type="chain", name="vision-turn")
 async def _vision_turn(
     session_id: uuid.UUID, user_id: uuid.UUID, user_msg: str, attachments: list[str]
 ) -> dict[str, Any]:
-    """Answer a question about an uploaded image, persisting the turn."""
+    """Answer a question about an uploaded image, persisting the turn.
+    Traceable: this path never enters the graph, so without the decorator an
+    image turn produced NO trace at all."""
     from app.ai.vision import describe_image, vision_available
     from app.documents.storage import get_storage
     from app.graph.nodes.persist import persist_node
@@ -154,6 +158,7 @@ async def run_turn(
     attachments: list[str] | None = None,
     on_frame: OnFrame | None = None,
     turn_id: str = "",
+    origin: str = "chat",
 ) -> dict[str, Any]:
     """Execute one turn through the graph; returns the WS response payload.
 
@@ -223,7 +228,16 @@ async def run_turn(
     if has_checkpointer:
         await _clear_parked(graph, config, session_id)
     try:
-        out = await _drive_graph(graph, turn_input, config, session_id, on_frame)
+        out = await _drive_graph(
+            graph,
+            turn_input,
+            config,
+            session_id,
+            on_frame,
+            origin=origin,
+            user_id=str(user_id),
+            turn_id=turn_id,
+        )
     except TimeoutError:
         return await _timeout_payload(session_id, user_msg, turn_id)
     if payload := _interrupt_payload(session_id, out):
@@ -300,7 +314,7 @@ async def resume_turn(
     config = {"configurable": {"thread_id": str(session_id)}}
     try:
         out = await _drive_graph(
-            graph, Command(resume=approved), config, session_id, on_frame
+            graph, Command(resume=approved), config, session_id, on_frame, origin="resume"
         )
     except TimeoutError:
         return await _timeout_payload(session_id, parked_user_msg, uuid.uuid4().hex)
@@ -332,6 +346,10 @@ async def _drive_graph(
     config: dict[str, Any],
     session_id: uuid.UUID,
     on_frame: OnFrame | None,
+    *,
+    origin: str = "chat",
+    user_id: str = "",
+    turn_id: str = "",
 ) -> AssistantState:
     """Stream one graph invocation under the per-turn deadline."""
     out: AssistantState = {}
@@ -340,12 +358,19 @@ async def _drive_graph(
     # run_name/metadata/tags surface in LangSmith when tracing is enabled —
     # a resumed turn is a separate root trace by design, so session_id is
     # what stitches a conversation's traces together there.
+    # origin tag separates human chat / scheduled / resumed traffic in
+    # LangSmith; user_id + turn_id make traces joinable with structured logs
+    metadata = {"session_id": str(session_id)}
+    if user_id:
+        metadata["user_id"] = user_id
+    if turn_id:
+        metadata["turn_id"] = turn_id
     run_config = {
         **config,
         "recursion_limit": 50,
         "run_name": "assistant-turn",
-        "metadata": {"session_id": str(session_id)},
-        "tags": [settings.APP_ENV],
+        "metadata": metadata,
+        "tags": [settings.APP_ENV, origin],
     }
     async with asyncio.timeout(settings.TURN_TIMEOUT_S):
         with span("turn", session_id=str(session_id)) as turn_span:

@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 import httpx
 from bs4 import BeautifulSoup
+from langsmith import traceable
 
 from app.core.config import settings
 from app.core.logging import log
@@ -84,6 +85,7 @@ def _parse_duckduckgo(html: str, max_results: int) -> list[SearchResult]:
     return results
 
 
+@traceable(run_type="retriever", name="web_search")
 async def search(query: str, max_results: int = 6) -> tuple[list[SearchResult], str]:
     """Try each provider in order; returns (results, provider_name|'none')."""
     for name, fn in (("tavily", _tavily), ("searxng", _searxng), ("duckduckgo", _duckduckgo)):

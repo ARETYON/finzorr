@@ -234,7 +234,13 @@ async def _run_tasks(now: datetime) -> None:
                 user = await db.get(User, task.user_id)
             from app.graph.turn import run_turn
 
-            await run_turn(session_id, task.user_id, user.name if user else "there", task.prompt)
+            await run_turn(
+                session_id,
+                task.user_id,
+                user.name if user else "there",
+                task.prompt,
+                origin="scheduled",
+            )
             async with SessionLocal() as db:
                 row = await db.get(ScheduledTask, task.id)
                 if row is not None:

@@ -276,10 +276,17 @@ async def test_due_task_runs_turn_in_own_session(
     _fake_redis(monkeypatch)
     calls: list[tuple[uuid.UUID, uuid.UUID, str, str]] = []
 
+    origins: list[str] = []
+
     async def fake_run_turn(
-        session_id: uuid.UUID, user_id_: uuid.UUID, user_name: str, prompt: str
+        session_id: uuid.UUID,
+        user_id_: uuid.UUID,
+        user_name: str,
+        prompt: str,
+        origin: str = "chat",
     ) -> None:
         calls.append((session_id, user_id_, user_name, prompt))
+        origins.append(origin)
 
     monkeypatch.setattr("app.graph.turn.run_turn", fake_run_turn)
 
@@ -288,6 +295,7 @@ async def test_due_task_runs_turn_in_own_session(
     assert len(calls) == 1
     assert calls[0][1] == user_id
     assert calls[0][2] == "Sched User"
+    assert origins == ["scheduled"]  # agent-initiated traffic is tagged
     assert calls[0][3] == "check the markets"
     async with SessionLocal() as db:
         row = await db.get(ScheduledTask, task.id)

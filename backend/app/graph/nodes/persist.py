@@ -8,6 +8,7 @@ their streamed answer).
 
 import uuid
 
+from langsmith import traceable
 from sqlalchemy import func, select
 from sqlalchemy.exc import InterfaceError, OperationalError
 
@@ -25,8 +26,11 @@ from app.models.user import utcnow
 TITLE_MAX_CHARS = 60
 
 
+@traceable(run_type="chain", name="chat.auto_title")
 async def _auto_title(session_id: uuid.UUID, first_message: str) -> None:
-    """Fire-and-forget: name the thread from its first message."""
+    """Fire-and-forget: name the thread from its first message. Traceable so
+    it's a NAMED root when spawned out-of-band (and cleanly separated when
+    the spawning persist node's run has already ended)."""
     try:
         title = await complete(
             [

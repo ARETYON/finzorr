@@ -126,7 +126,7 @@ def build_graph() -> StateGraph[AssistantState]:
     )
     builder.add_node("advance", traced("advance", advance_node))
     builder.add_node("replan", traced("replan", replan_node))
-    builder.add_node("spec_runner", spec_runner_node)  # spans itself per-branch
+    builder.add_node("spec_runner", traced("spec_runner", spec_runner_node))
     builder.add_node("join", traced("join", join_node))
     builder.add_node("compose", traced("compose", compose_node))
     builder.add_node("persist", traced("persist", persist_node), retry_policy=_PERSIST_RETRY)

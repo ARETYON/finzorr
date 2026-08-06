@@ -59,7 +59,17 @@ async def _record_usage(provider: str, usage: Usage) -> None:
 # LangSmith (nodes included), but these calls are raw httpx — @traceable is
 # what makes them appear as llm runs. It NO-OPS when tracing is disabled
 # (no client, no network, ~0.1ms).
-@traceable(run_type="llm", name="llm.call")
+def _trim_llm_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
+    """Run inputs minus the noise: on_token is a function repr, and `tools`
+    would serialize the ENTIRE tool-schema list on every agent-loop call."""
+    tools = inputs.get("tools")
+    return {
+        **{k: v for k, v in inputs.items() if k not in ("on_token", "tools")},
+        "tools": [t.name for t in tools] if tools else None,
+    }
+
+
+@traceable(run_type="llm", name="llm.call", process_inputs=_trim_llm_inputs)
 async def _run_stream(
     provider_name: str,
     messages: list[ChatMessage],

@@ -12,6 +12,7 @@ import re
 import uuid
 from typing import Any
 
+from langsmith import traceable
 from qdrant_client import models as qmodels
 
 from app.ai.base import SystemMessage, UserMessage
@@ -64,6 +65,7 @@ def _store() -> "Any | None":
 _NAMESPACE = "memories"
 
 
+@traceable(run_type="chain", name="memory.extract")
 async def extract_and_store(user_id: str, user_msg: str, reply: str) -> int:
     """Fire-and-forget worker: extract facts and upsert them. Returns count."""
     try:

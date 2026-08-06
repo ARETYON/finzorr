@@ -100,13 +100,13 @@ async def research_search_node(state: AssistantState) -> AssistantState:
 
 async def research_read_node(state: AssistantState) -> AssistantState:
     """Stage 3: read the top pages (bounded) for depth beyond snippets."""
-    from app.tools_registry.web_tools import _read_url
+    from app.tools_registry.dispatcher import dispatch
 
     sources = state.get("research_sources", [])
     to_read = sources[:MAX_PAGE_FETCHES]
     _progress(f"📄 Reading {len(to_read)} pages…\n")
     pages = await asyncio.gather(
-        *(_read_url({"url": s["url"]}) for s in to_read), return_exceptions=True
+        *(dispatch("read_url", {"url": s["url"]}) for s in to_read), return_exceptions=True
     )
     page_texts = [
         p[:_PAGE_CHARS] for p in pages if isinstance(p, str) and not p.startswith("Error:")

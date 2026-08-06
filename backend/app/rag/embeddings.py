@@ -6,6 +6,7 @@ vector space never drifts between environments.
 """
 
 import httpx
+from langsmith import traceable
 
 from app.core.config import settings
 
@@ -16,6 +17,15 @@ class EmbeddingError(Exception):
     """Raised when the embedding service fails or returns a bad shape."""
 
 
+@traceable(
+    run_type="embedding",
+    name="embed",
+    # embedding inputs can be whole document chunks — record shape, not text
+    process_inputs=lambda inputs: {
+        "count": len(inputs.get("texts", [])),
+        "first": (inputs.get("texts") or [""])[0][:120],
+    },
+)
 async def embed_texts(texts: list[str]) -> list[list[float]]:
     """Embed a batch of texts; raises EmbeddingError on any failure."""
     if not texts:
