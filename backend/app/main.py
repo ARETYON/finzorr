@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.logging import configure_logging, log
-from app.routers import auth, chat, chat_ws, documents, health, market, watchlist
+from app.routers import attachments, auth, chat, chat_ws, documents, health, market, watchlist
 
 
 @asynccontextmanager
@@ -33,7 +33,16 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         register_microservice_tools()
     except Exception as exc:  # noqa: BLE001
         log.warning("startup.microservice_tools_failed", error=str(exc))
+    scheduler_task = None
+    if settings.SCHEDULER_ENABLED:
+        import asyncio
+
+        from app.scheduler import scheduler_loop
+
+        scheduler_task = asyncio.create_task(scheduler_loop())
     yield
+    if scheduler_task is not None:
+        scheduler_task.cancel()
     log.info("app.shutdown")
 
 
@@ -54,6 +63,7 @@ app.include_router(chat_ws.router)
 app.include_router(market.router)
 app.include_router(documents.router)
 app.include_router(watchlist.router)
+app.include_router(attachments.router)
 
 if settings.is_dev:
     from app.routers import debug

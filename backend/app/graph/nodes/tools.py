@@ -18,11 +18,14 @@ from app.ai.base import (
 from app.ai.completion import stream
 from app.core.logging import log
 from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
+from app.core.request_context import set_current_user
 from app.graph.callbacks import emit
 from app.graph.nodes.general_chat import build_history
 from app.graph.state import AssistantState
 from app.tools_registry import (
     market_tools,  # noqa: F401 — registers the family
+    portfolio_tools,  # noqa: F401 — registers analyze_portfolio
+    research_tools,  # noqa: F401 — registers deep_research
     web_tools,  # noqa: F401 — registers read_url
 )
 from app.tools_registry.dispatcher import all_tools, dispatch_all
@@ -39,6 +42,9 @@ register(
             "- ALWAYS call tools for prices, fundamentals, or history — never answer "
             "from memory for live market data.\n"
             "- If a company name is ambiguous, call search_symbol first.\n"
+            "- Portfolio/holdings questions -> call analyze_portfolio.\n"
+            "- Requests for research/reports/comparisons -> call deep_research.\n"
+            "- A pasted URL -> call read_url.\n"
             "- Report numbers exactly as returned; mention the data may be delayed.\n"
             "- End finance answers with: \"This is general information, not investment "
             "advice. Market data may be delayed.\"\n"
@@ -75,6 +81,7 @@ async def _chart_for(tool_call_log: list[dict[str, Any]]) -> dict[str, Any]:
 async def tools_node(state: AssistantState) -> AssistantState:
     """Run the tool-calling loop; degrade to a friendly error on failure."""
     session_id = state["session_id"]
+    set_current_user(state.get("user_id", ""))
 
     async def on_token(t: str) -> None:
         await emit(session_id, {"type": "token", "delta": t})

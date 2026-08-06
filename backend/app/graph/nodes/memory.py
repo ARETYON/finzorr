@@ -21,6 +21,8 @@ from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
 from app.db.session import SessionLocal
 from app.graph.callbacks import emit
 from app.graph.state import AssistantState
+from app.models.price_alert import PriceAlert
+from app.models.scheduled_task import ScheduledTask
 from app.models.watchlist_item import WatchlistItem
 
 _JSON_BLOCK = re.compile(r"\{.*\}", re.DOTALL)
@@ -30,15 +32,20 @@ register(
         name="memory_system",
         version="1",
         template=(
-            "You are finzorr's watchlist secretary for {user_name}.\n"
-            "Current watchlist: {watchlist}\n\n"
+            "You are finzorr's secretary for {user_name}.\n"
+            "Current watchlist: {watchlist}\n"
+            "Active price alerts: {alerts}\n\n"
             "Reply with ONLY a JSON object:\n"
             '{{"message": "<friendly reply>", "actions": [<zero or more>]}}\n'
-            'Each action: {{"type": "watchlist_add"|"watchlist_remove", '
-            '"symbol": "<NSE/BSE ticker, uppercase>"}}\n'
+            "Action shapes:\n"
+            '- {{"type": "watchlist_add"|"watchlist_remove", "symbol": "<TICKER>"}}\n'
+            '- {{"type": "alert_create", "symbol": "<TICKER>", '
+            '"direction": "above"|"below", "target": <number>}}\n'
+            '- {{"type": "task_create", "spec": "daily@HH:MM"|"weekly@D@HH:MM", '
+            '"prompt": "<what to do>"}}  (D: 0=Mon..6=Sun, IST times)\n'
             "Rules:\n"
-            "- Adding/removing stocks -> emit the action AND confirm in message.\n"
-            "- Questions about the list -> answer from the watchlist above.\n"
+            "- Mutations -> emit the action AND confirm in message.\n"
+            "- Questions -> answer from the context above.\n"
             "- Resolve company names to tickers (e.g. Infosys -> INFY).\n"
             "- No investment recommendations; if asked, decline politely."
         ),
@@ -66,6 +73,16 @@ async def _get_watchlist(user_id: uuid.UUID) -> list[str]:
         return [row[0] for row in result]
 
 
+async def _get_alerts(user_id: uuid.UUID) -> list[str]:
+    async with SessionLocal() as db:
+        result = await db.execute(
+            select(PriceAlert).where(
+                PriceAlert.user_id == user_id, PriceAlert.active.is_(True)
+            )
+        )
+        return [f"{a.symbol} {a.direction} {a.target}" for a in result.scalars()]
+
+
 async def _apply_actions(user_id: uuid.UUID, actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Idempotent watchlist mutations; per-action failures are isolated."""
     applied: list[dict[str, Any]] = []
@@ -73,7 +90,7 @@ async def _apply_actions(user_id: uuid.UUID, actions: list[dict[str, Any]]) -> l
         for action in actions:
             try:
                 symbol = str(action.get("symbol", "")).upper().strip()
-                if not symbol or len(symbol) > 32:
+                if action.get("type") != "task_create" and (not symbol or len(symbol) > 32):
                     continue
                 if action.get("type") == "watchlist_add":
                     await db.execute(
@@ -89,6 +106,27 @@ async def _apply_actions(user_id: uuid.UUID, actions: list[dict[str, Any]]) -> l
                         )
                     )
                     applied.append({"type": "watchlist_remove", "symbol": symbol})
+                elif action.get("type") == "alert_create":
+                    direction = str(action.get("direction", "above"))
+                    target = float(action.get("target", 0))
+                    if direction in ("above", "below") and target > 0:
+                        db.add(
+                            PriceAlert(
+                                user_id=user_id,
+                                symbol=symbol,
+                                direction=direction,
+                                target=target,
+                            )
+                        )
+                        applied.append(
+                            {"type": "alert_create", "symbol": symbol, "target": target}
+                        )
+                elif action.get("type") == "task_create":
+                    spec = str(action.get("spec", "")).strip()
+                    prompt = str(action.get("prompt", "")).strip()
+                    if spec.split("@")[0] in ("daily", "weekly") and prompt:
+                        db.add(ScheduledTask(user_id=user_id, spec=spec, prompt=prompt))
+                        applied.append({"type": "task_create", "spec": spec})
             except Exception as exc:  # noqa: BLE001 — one bad action != dead turn
                 log.warning("node.memory.action_failed", error=str(exc))
         await db.commit()
@@ -104,11 +142,13 @@ async def memory_node(state: AssistantState) -> AssistantState:
     except ValueError:
         user_id = None
     watchlist = await _get_watchlist(user_id) if user_id else []
+    alerts = await _get_alerts(user_id) if user_id else []
     system = SystemMessage(
         content=render_agent_prompt(
             "memory_system",
             user_name=state.get("user_name", "there"),
             watchlist=", ".join(watchlist) or "(empty)",
+            alerts=", ".join(alerts) or "(none)",
         )
     )
     try:

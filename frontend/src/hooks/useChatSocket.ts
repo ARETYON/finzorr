@@ -58,8 +58,13 @@ export function useChatSocket(onFrame: FrameHandler) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const sendChat = useCallback((sessionId: string, message: string) => {
-    const payload = JSON.stringify({ type: 'chat', session_id: sessionId, message })
+  const sendChat = useCallback((sessionId: string, message: string, attachments?: string[]) => {
+    const payload = JSON.stringify({
+      type: 'chat',
+      session_id: sessionId,
+      message,
+      ...(attachments?.length ? { attachments } : {}),
+    })
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(payload)
     } else {

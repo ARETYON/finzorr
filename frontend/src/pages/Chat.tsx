@@ -91,12 +91,13 @@ export default function Chat() {
 
   const { connected, sendChat, cancel } = useChatSocket(onFrame)
 
-  const handleSend = async (text: string) => {
+  const handleSend = async (text: string, attachments?: string[]) => {
     let sessionId = activeSessionId
     if (!sessionId) sessionId = await newSession()
     lastUserMsgRef.current = text
-    setMessages((prev) => [...prev, { id: `local-${Date.now()}`, role: 'user', content: text }])
-    sendChat(sessionId, text)
+    const shown = attachments?.length ? `${text} 🖼️` : text
+    setMessages((prev) => [...prev, { id: `local-${Date.now()}`, role: 'user', content: shown }])
+    sendChat(sessionId, text, attachments)
   }
 
   const handleRegenerate = () => {
@@ -187,7 +188,7 @@ export default function Chat() {
         <MessageInput
           disabled={!connected}
           streaming={streaming || thinking}
-          onSend={(t) => void handleSend(t)}
+          onSend={(t, a) => void handleSend(t, a)}
           onCancel={cancel}
           prefill={prefill}
           onPrefillConsumed={() => setPrefill('')}

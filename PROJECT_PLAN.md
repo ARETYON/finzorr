@@ -737,13 +737,13 @@ the Word doc regenerated.
 ### Wave 2 — medium (free)
 | # | Feature | Status | Design note |
 |---|---|---|---|
-| 9 | Personal long-term memory | WAVE-2 | fire-and-forget fact extraction → Qdrant `memfacts:{user}` → prompt injection; user-visible + deletable |
-| 10 | Image understanding | WAVE-2 | provider-gated vision: Gemini free tier or local Ollama VISION_MODEL |
-| 11 | Daily market briefing | WAVE-2 | in-process scheduler → briefing message into a dedicated session |
-| 12 | Price alerts | WAVE-2 | price_alerts table + ~5-min checker on cached quotes |
-| 13 | Scheduled tasks | WAVE-2 | scheduled_tasks table; runner executes prompts through the normal graph |
-| 14 | Deep-research mode | WAVE-2 | plan sub-questions → parallel search+read_url (capped) → sectioned cited report |
-| 15 | CSV/portfolio analysis | WAVE-2 | analyze_portfolio tool: holdings CSV × live quotes → P&L/allocation |
+| 9 | Personal long-term memory | LIVE | fire-and-forget fact extraction → Qdrant `memfacts:{user}` → prompt injection; user-visible + deletable |
+| 10 | Image understanding | LIVE (GATED-ON-KEY: Gemini key or local vision model) | provider-gated vision: Gemini free tier or local Ollama VISION_MODEL |
+| 11 | Daily market briefing | LIVE | in-process scheduler → briefing message into a dedicated session |
+| 12 | Price alerts | LIVE | price_alerts table + ~5-min checker on cached quotes |
+| 13 | Scheduled tasks | LIVE | scheduled_tasks table; runner executes prompts through the normal graph |
+| 14 | Deep-research mode | LIVE | plan sub-questions → parallel search+read_url (capped) → sectioned cited report |
+| 15 | CSV/portfolio analysis | LIVE | analyze_portfolio tool: holdings CSV × live quotes → P&L/allocation |
 
 ### Wave 3 — heavy (feasible-free subset; honest gating)
 | # | Feature | Status | Design note |

@@ -88,14 +88,19 @@ class _Connection:
         if not user_msg:
             await self.send({"type": "error", "message": "empty message"})
             return
+        attachments = [str(a) for a in data.get("attachments", []) if isinstance(a, str)][:1]
         await self.send({"type": "thinking"})
-        self.turn_task = asyncio.create_task(self._run(session_id, user_msg))
+        self.turn_task = asyncio.create_task(self._run(session_id, user_msg, attachments))
 
-    async def _run(self, session_id: uuid.UUID, user_msg: str) -> None:
+    async def _run(
+        self, session_id: uuid.UUID, user_msg: str, attachments: list[str]
+    ) -> None:
         sid = str(session_id)
         set_callback(sid, self.send)
         try:
-            response = await run_turn(session_id, self.user.id, self.user.name, user_msg)
+            response = await run_turn(
+                session_id, self.user.id, self.user.name, user_msg, attachments or None
+            )
             await self.send(response)
         except asyncio.CancelledError:
             await self.send({"type": "stopped"})

@@ -13,6 +13,9 @@ pytestmark = pytest.mark.sanity
         # memory / watchlist
         ("add TCS to my watchlist", "memory"),
         ("what's on my watch list?", "memory"),
+        ("alert me when TCS goes above 5000", "memory"),
+        ("every day at 6pm summarize my watchlist", "memory"),
+        ("how is my portfolio doing", "tools"),
         # nl2sql / screening
         ("show stocks with PE under 15", "nl2sql"),
         ("top 10 stocks by market cap above 1000000", "nl2sql"),

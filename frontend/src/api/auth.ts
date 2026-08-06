@@ -26,3 +26,17 @@ export async function updateMe(customInstructions: string): Promise<User> {
   })
   return data
 }
+
+export interface MemoryFact {
+  id: string
+  text: string
+}
+
+export async function listMemories(): Promise<MemoryFact[]> {
+  const { data } = await api.get<MemoryFact[]>('/api/auth/memories')
+  return data
+}
+
+export async function deleteMemory(id: string): Promise<void> {
+  await api.delete(`/api/auth/memories/${id}`)
+}

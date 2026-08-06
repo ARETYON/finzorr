@@ -5,6 +5,8 @@ from app.models.document import Document
 from app.models.feedback import Feedback
 from app.models.fundamental import Fundamental
 from app.models.message import Message
+from app.models.price_alert import PriceAlert
+from app.models.scheduled_task import ScheduledTask
 from app.models.user import User
 from app.models.watchlist_item import WatchlistItem
 
@@ -14,6 +16,8 @@ __all__ = [
     "Feedback",
     "Fundamental",
     "Message",
+    "PriceAlert",
+    "ScheduledTask",
     "User",
     "WatchlistItem",
 ]

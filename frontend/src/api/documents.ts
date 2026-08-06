@@ -42,3 +42,10 @@ export async function addWatchlist(symbol: string): Promise<void> {
 export async function removeWatchlist(symbol: string): Promise<void> {
   await api.delete(`/api/watchlist/${symbol}`)
 }
+
+export async function uploadAttachment(file: File): Promise<{ token: string; mime: string }> {
+  const form = new FormData()
+  form.append('file', file)
+  const { data } = await api.post<{ token: string; mime: string }>('/api/chat/attachments', form)
+  return data
+}

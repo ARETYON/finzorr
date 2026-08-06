@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { Mic, MicOff, Send, Square } from 'lucide-react'
+import { ImagePlus, Mic, MicOff, Send, Square, X } from 'lucide-react'
 import clsx from 'clsx'
 import toast from 'react-hot-toast'
+import { uploadAttachment } from '../../api/documents'
 
 interface Props {
   disabled: boolean
   streaming: boolean
-  onSend: (text: string) => void
+  onSend: (text: string, attachments?: string[]) => void
   onCancel: () => void
   prefill?: string
   onPrefillConsumed?: () => void
@@ -46,7 +47,10 @@ export default function MessageInput({
 }: Props) {
   const [text, setText] = useState('')
   const [listening, setListening] = useState(false)
+  const [attachment, setAttachment] = useState<{ token: string; name: string } | null>(null)
+  const [uploading, setUploading] = useState(false)
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (prefill) {
@@ -57,9 +61,24 @@ export default function MessageInput({
 
   const submit = () => {
     const trimmed = text.trim()
-    if (!trimmed || disabled || streaming) return
-    onSend(trimmed)
+    if ((!trimmed && !attachment) || disabled || streaming) return
+    onSend(trimmed || 'Describe this image.', attachment ? [attachment.token] : undefined)
     setText('')
+    setAttachment(null)
+  }
+
+  const pickImage = async (file: File | undefined) => {
+    if (!file) return
+    setUploading(true)
+    try {
+      const { token } = await uploadAttachment(file)
+      setAttachment({ token, name: file.name })
+    } catch {
+      toast.error('Image upload failed (PNG/JPEG, max 5MB)')
+    } finally {
+      setUploading(false)
+      if (imageInputRef.current) imageInputRef.current.value = ''
+    }
   }
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -98,8 +117,33 @@ export default function MessageInput({
 
   return (
     <div className="border-t border-line bg-panel p-3">
+      {attachment && (
+        <div className="mx-auto mb-2 flex max-w-3xl">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-chip px-2.5 py-1 text-[11px] text-ink-mid">
+            🖼️ {attachment.name}
+            <button onClick={() => setAttachment(null)} aria-label="Remove image">
+              <X size={11} className="text-ink-faint hover:text-danger" />
+            </button>
+          </span>
+        </div>
+      )}
       <div className="mx-auto flex max-w-3xl items-end gap-2">
         <span className="fui-only fui-mono pb-2.5 text-sm text-accent-strong">&gt;</span>
+        <button
+          onClick={() => imageInputRef.current?.click()}
+          disabled={uploading}
+          className="clip-btn rounded-xl bg-chip p-2.5 text-ink-mid hover:bg-line disabled:opacity-50"
+          aria-label="Attach image"
+        >
+          <ImagePlus size={18} />
+        </button>
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/png,image/jpeg"
+          className="hidden"
+          onChange={(e) => void pickImage(e.target.files?.[0])}
+        />
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -135,7 +179,7 @@ export default function MessageInput({
         ) : (
           <button
             onClick={submit}
-            disabled={disabled || !text.trim()}
+            disabled={disabled || (!text.trim() && !attachment)}
             className="clip-btn rounded-xl bg-accent p-2.5 text-btn-ink hover:bg-accent-hover disabled:opacity-40"
             aria-label="Send"
           >

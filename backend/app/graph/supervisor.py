@@ -34,7 +34,8 @@ _SQL_HINTS = re.compile(
 )
 _TOOL_HINTS = re.compile(
     r"\b(price|quote|trading at|share price|52.week|overview of|fundamentals of|"
-    r"history|historical|performance of|volume)\b",
+    r"history|historical|performance of|volume|my (portfolio|holdings)|"
+    r"deep research|research report)\b",
     re.IGNORECASE,
 )
 _RAG_HINTS = re.compile(
@@ -42,7 +43,11 @@ _RAG_HINTS = re.compile(
     r"contract|report)|uploaded)\b",
     re.IGNORECASE,
 )
-_MEMORY_HINTS = re.compile(r"\b(watch\s?list|track|untrack|my list)\b", re.IGNORECASE)
+_MEMORY_HINTS = re.compile(
+    r"\b(watch\s?list|track|untrack|my list|alert me|set (an? )?alert|notify me|"
+    r"every (day|week|morning|evening)|daily at|remind me)\b",
+    re.IGNORECASE,
+)
 
 _JSON_BLOCK = re.compile(r"\{.*\}", re.DOTALL)
 
@@ -53,13 +58,15 @@ register(
         template=(
             "You route user messages for an assistant with these specialists:\n"
             "- general_chat: anything conversational, coding, writing, general knowledge\n"
-            "- memory: the user's stock watchlist (add/remove/show)\n"
+            "- memory: the user's watchlist, PRICE ALERTS ('alert me when...'), and "
+            "scheduled/recurring tasks ('every day...')\n"
             "- rag: definitions/concepts (finance glossary) or questions about the "
             "user's uploaded documents\n"
             "- web_search: fresh news / current events / anything needing today's info\n"
             "- nl2sql: screening/filtering MANY stocks by metrics (P/E, yield, "
             "market cap...)\n"
-            "- tools: live price/quote/fundamentals/history of SPECIFIC stocks, or "
+            "- tools: live price/quote/fundamentals/history of SPECIFIC stocks, the "
+            "user's PORTFOLIO/holdings performance, deep research reports, or "
             "reading/summarizing a URL the user pasted\n\n"
             'Reply with ONLY JSON: {{"route": "<one of the six>", '
             '"plan": ["<step>", ...], "reason": "<short>"}}'

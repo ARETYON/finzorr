@@ -82,3 +82,19 @@ async def update_me(
 async def me(user: User = Depends(get_current_user)) -> User:
     """Return the authenticated user (401 if the cookie is missing/invalid)."""
     return user
+
+
+@router.get("/memories")
+async def list_memories(user: User = Depends(get_current_user)) -> list[dict[str, str]]:
+    """The user's stored long-term memory facts."""
+    from app.memory.facts import list_facts
+
+    return await list_facts(str(user.id))
+
+
+@router.delete("/memories/{fact_id}", status_code=204)
+async def delete_memory(fact_id: str, user: User = Depends(get_current_user)) -> None:
+    """Delete one memory fact (user-scoped)."""
+    from app.memory.facts import delete_fact
+
+    await delete_fact(str(user.id), fact_id)

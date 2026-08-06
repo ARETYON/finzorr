@@ -1,9 +1,9 @@
 // Settings: custom instructions (server-side) + auto-read toggle (client-side).
 
 import { useEffect, useState } from 'react'
-import { X } from 'lucide-react'
+import { Trash2, X } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { updateMe } from '../api/auth'
+import { deleteMemory, listMemories, updateMe, type MemoryFact } from '../api/auth'
 import { useAuthStore } from '../store/authStore'
 import { useSettingsStore } from '../store/settingsStore'
 
@@ -12,10 +12,23 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   const { autoRead, setAutoRead } = useSettingsStore()
   const [instructions, setInstructions] = useState('')
   const [saving, setSaving] = useState(false)
+  const [memories, setMemories] = useState<MemoryFact[]>([])
 
   useEffect(() => {
     setInstructions(user?.custom_instructions ?? '')
+    listMemories()
+      .then(setMemories)
+      .catch(() => undefined)
   }, [user])
+
+  const removeMemory = async (id: string) => {
+    try {
+      await deleteMemory(id)
+      setMemories((prev) => prev.filter((m) => m.id !== id))
+    } catch {
+      toast.error('Could not delete memory')
+    }
+  }
 
   const save = async () => {
     setSaving(true)
@@ -57,6 +70,28 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
           placeholder="e.g. Always answer briefly. Explain finance terms like I'm a beginner."
           className="clip-panel w-full resize-none rounded-lg border border-line-strong bg-panel px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-accent-strong focus:outline-none"
         />
+        <div className="mt-4">
+          <span className="mb-1 block text-xs font-medium text-ink-mid">
+            What finzorr remembers about you
+          </span>
+          <ul className="max-h-32 space-y-1 overflow-y-auto">
+            {memories.length === 0 && (
+              <li className="text-[11px] text-ink-faint">Nothing yet — memories build up as you chat.</li>
+            )}
+            {memories.map((m) => (
+              <li key={m.id} className="group flex items-center gap-2 text-[12px] text-ink-mid">
+                <span className="flex-1 truncate" title={m.text}>• {m.text}</span>
+                <button
+                  onClick={() => void removeMemory(m.id)}
+                  className="hidden text-ink-faint hover:text-danger group-hover:block"
+                  aria-label="Forget this"
+                >
+                  <Trash2 size={11} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
         <label className="mt-4 flex items-center gap-2 text-sm text-ink-mid">
           <input
             type="checkbox"

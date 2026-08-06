@@ -6,6 +6,7 @@ citations/tool-calls never leak across turns. The WS layer's contract is
 unchanged from the v1 single-node era.
 """
 
+import asyncio
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -41,13 +42,71 @@ async def _load_instructions(user_id: uuid.UUID) -> str:
         return (user.custom_instructions or "") if user else ""
 
 
+async def _vision_turn(
+    session_id: uuid.UUID, user_id: uuid.UUID, user_msg: str, attachments: list[str]
+) -> dict[str, Any]:
+    """Answer a question about an uploaded image, persisting the turn."""
+    from app.ai.vision import describe_image, vision_available
+    from app.documents.storage import get_storage
+    from app.graph.nodes.persist import persist_node
+
+    if not vision_available():
+        answer = (
+            "Image understanding isn't configured yet. Add GEMINI_API_KEY (free tier) "
+            "or set VISION_MODEL to a local Ollama vision model (e.g. `ollama pull "
+            "llava`) and restart."
+        )
+    else:
+        try:
+            token = attachments[0]
+            data = await get_storage().load(f"attachments/{user_id}/{token}")
+            mime = "image/png" if token.endswith(".png") else "image/jpeg"
+            answer = await describe_image(user_msg, data, mime)
+        except Exception as exc:  # noqa: BLE001 — degrade gracefully
+            log.error("vision.failed", error=str(exc))
+            answer = "I couldn't analyze that image right now — please try again."
+    out: AssistantState = {
+        "session_id": str(session_id),
+        "user_msg": f"{user_msg} [image attached]",
+        "final_text": answer,
+        "route": "general_chat",
+    }
+    persisted = await persist_node(out)
+    return {
+        "type": "response",
+        "message_id": persisted.get("message_id", ""),
+        "message": answer,
+        "route": "general_chat",
+        "route_reason": "image understanding",
+        "citations": [],
+        "tool_calls": [],
+        "actions": [],
+        "data_as_of": datetime.now(UTC).isoformat(),
+        "sources": [],
+        "chart": None,
+        "session_id": str(session_id),
+    }
+
+
 async def run_turn(
-    session_id: uuid.UUID, user_id: uuid.UUID, user_name: str, user_msg: str
+    session_id: uuid.UUID,
+    user_id: uuid.UUID,
+    user_name: str,
+    user_msg: str,
+    attachments: list[str] | None = None,
 ) -> dict[str, Any]:
     """Execute one turn through the graph; returns the WS response payload."""
     cid = new_correlation_id()
+    if attachments:
+        return await _vision_turn(session_id, user_id, user_msg, attachments)
     graph, has_checkpointer = await get_graph()
     user_instructions = await _load_instructions(user_id)
+    from app.memory.facts import extract_and_store, recall
+
+    memories = await recall(str(user_id), user_msg)
+    if memories:
+        memory_note = "Known about this user: " + "; ".join(memories)
+        user_instructions = f"{user_instructions}\n{memory_note}".strip()
     turn_input: AssistantState = {
         "session_id": str(session_id),
         "user_id": str(user_id),
@@ -73,6 +132,9 @@ async def run_turn(
     config = {"configurable": {"thread_id": str(session_id)}}
     out: AssistantState = await graph.ainvoke(turn_input, config=config)
     log.info("turn.done", session_id=str(session_id), route=out.get("route"))
+    _memory_task = asyncio.create_task(  # noqa: RUF006 — fire-and-forget
+        extract_and_store(str(user_id), user_msg, out.get("final_text", ""))
+    )
     return {
         "type": "response",
         "message_id": out.get("message_id", ""),

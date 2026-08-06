@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     HF_TOKEN: str = ""
     HF_MODEL: str = "openai/gpt-oss-120b"
 
+    # --- Vision (image understanding; provider-gated) ---
+    VISION_MODEL: str = ""  # local Ollama vision model, e.g. "llava"; Gemini used if key set
+
     # --- Embeddings (host Ollama in dev; ollama-embed container in uat/prod) ---
     EMBED_OLLAMA_URL: str = "http://localhost:11434"
     EMBED_MODEL: str = "nomic-embed-text:v1.5"
@@ -72,6 +75,10 @@ class Settings(BaseSettings):
     MAX_UPLOAD_MB: int = 10
     MAX_UPLOAD_PAGES: int = 100
     MAX_DOCS_PER_USER: int = 20
+
+    # --- Scheduler (briefings / alerts / tasks) ---
+    SCHEDULER_ENABLED: bool = True
+    BRIEFING_TIME_IST: str = "08:30"
 
     # --- External tool integrations ---
     GITHUB_TOKEN: str = ""
