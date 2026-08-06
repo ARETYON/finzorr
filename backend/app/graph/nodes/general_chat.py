@@ -47,4 +47,5 @@ async def general_chat_node(state: AssistantState) -> AssistantState:
                 "I couldn't reach the language model just now. Please try again in a moment."
             ),
             "route": "general_chat",
+            "step_error": True,
         }

@@ -36,6 +36,7 @@ from app.graph.nodes.memory import memory_node
 from app.graph.nodes.nl2sql import nl2sql_node
 from app.graph.nodes.persist import persist_node
 from app.graph.nodes.rag import rag_node
+from app.graph.nodes.replan import replan_node
 from app.graph.nodes.research import (
     research_plan_node,
     research_read_node,
@@ -100,6 +101,7 @@ def build_graph() -> StateGraph[AssistantState]:
         "research_synthesize", traced("research_synthesize", research_synthesize_node)
     )
     builder.add_node("advance", traced("advance", advance_node))
+    builder.add_node("replan", traced("replan", replan_node))
     builder.add_node("compose", traced("compose", compose_node))
     builder.add_node("persist", traced("persist", persist_node), retry_policy=_PERSIST_RETRY)
     builder.add_edge(START, "supervisor")
@@ -119,7 +121,13 @@ def build_graph() -> StateGraph[AssistantState]:
     builder.add_edge("tools_exec", "tools_plan")
     # advance: next plan step | compose (multi-step) | persist
     builder.add_conditional_edges(
-        "advance", after_step, {**BRANCHES, "compose": "compose", "persist": "persist"}
+        "advance",
+        after_step,
+        {**BRANCHES, "replan": "replan", "compose": "compose", "persist": "persist"},
+    )
+    # replan re-enters the plan walk (revised step) or exits honestly
+    builder.add_conditional_edges(
+        "replan", after_step, {**BRANCHES, "compose": "compose", "persist": "persist"}
     )
     builder.add_edge("compose", "persist")
     builder.add_edge("persist", END)

@@ -41,6 +41,9 @@ class AssistantState(TypedDict, total=False):
     step_outputs: list[dict[str, Any]]
     current_task: str
     route_reason: str
+    step_error: bool  # set by a specialist's degradation path (the only failure signal)
+    needs_replan: bool
+    replan_count: int
 
     # tool-loop working state (per-turn; checkpointed per superstep)
     tool_transcript: list[dict[str, Any]]

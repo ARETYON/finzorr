@@ -152,7 +152,9 @@ async def _history_series(symbol: str, period: str) -> list[dict[str, Any]]:
     return await _history_list(symbol, period)
 
 
-def _finalize(state: AssistantState, final_text: str) -> AssistantState:
+def _finalize(
+    state: AssistantState, final_text: str, *, step_error: bool = False
+) -> AssistantState:
     tool_call_log = _tool_call_log(state.get("tool_transcript", []))
     return {
         "final_text": final_text,
@@ -160,6 +162,7 @@ def _finalize(state: AssistantState, final_text: str) -> AssistantState:
         "tool_calls": tool_call_log,
         "data_as_of": datetime.now(UTC).isoformat(),
         "sources": ["Yahoo Finance"] if tool_call_log else [],
+        "step_error": step_error,
         "pending_tool_calls": [],
     }
 
@@ -173,6 +176,7 @@ async def tools_plan_node(state: AssistantState) -> AssistantState:
             state,
             "I gathered partial data but hit my tool-use limit for one turn — "
             "please ask a more specific question.",
+            step_error=True,
         )
 
     system_content = render_agent_prompt("tools_system", user_name=state.get("user_name", "there"))
@@ -194,7 +198,9 @@ async def tools_plan_node(state: AssistantState) -> AssistantState:
     except Exception as exc:  # noqa: BLE001 — degrade, never crash the turn
         log.error("node.tools.error", error=str(exc))
         return _finalize(
-            state, "I couldn't fetch market data right now. Please try again shortly."
+            state,
+            "I couldn't fetch market data right now. Please try again shortly.",
+            step_error=True,
         )
 
     if not done.tool_calls:

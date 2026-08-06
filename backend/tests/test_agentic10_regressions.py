@@ -133,7 +133,10 @@ class TestCompose:
             }
         )
         assert "one" in out["final_text"] and "two" in out["final_text"]
-        assert out["citations"] == [{"m": 1}, {"m": 2}]
+        # citations survive with globally renumbered markers
+        assert [c["marker"] for c in out["citations"]] == ["[1]", "[2]"]
+        assert out["sources"] == []
+        assert out["chart"] == {}
 
 
 # ------------------------------------------------- dispatcher arg validation

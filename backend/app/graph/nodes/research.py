@@ -172,4 +172,5 @@ async def research_synthesize_node(state: AssistantState) -> AssistantState:
             f"Research gathered {len(sources)} sources but synthesis failed — "
             "please retry."
         )
+        result["step_error"] = True
     return result

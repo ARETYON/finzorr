@@ -29,6 +29,7 @@ async def nl2sql_node(state: AssistantState) -> AssistantState:
                 "yield above 2%\"."
             ),
             "route": "nl2sql",
+            "step_error": True,
             "tool_calls": [
                 {"name": "nl2sql", "arguments": {}, "result": result.error[:300]}
             ],

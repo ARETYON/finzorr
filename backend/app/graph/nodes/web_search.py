@@ -40,6 +40,7 @@ async def web_search_node(state: AssistantState) -> AssistantState:
                 "answer with fresh information. Please try again shortly."
             ),
             "route": "web_search",
+            "step_error": True,
         }
     # Titles/snippets are attacker-influenceable (SEO'd pages) — fence them
     # exactly like page bodies, not just the fetched content.
@@ -82,5 +83,6 @@ async def web_search_node(state: AssistantState) -> AssistantState:
         log.error("node.web_search.error", error=str(exc))
         return {
             "final_text": "I found web results but couldn't summarize them — please retry.",
+            "step_error": True,
             "route": "web_search",
         }

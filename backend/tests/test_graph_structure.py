@@ -22,6 +22,7 @@ EXPECTED_NODES = {
     "research_read",
     "research_synthesize",
     "advance",  # the plan walker
+    "replan",  # one revision attempt on step failure
     "compose",  # multi-step synthesis
     "persist",
 }

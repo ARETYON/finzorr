@@ -74,9 +74,13 @@ async def test_two_step_plan_composes(
         # step 2 saw step 1's output, fenced as data
         assert "OUT1" in seen_prompts[1]
         assert "previous step results" in seen_prompts[1]
-        # routing frames for both steps reached the stream
+        # routing frames: both steps + the compose boundary frame
         routing = [f for f in frames if f.get("type") == "routing"]
-        assert [(f["step"], f["of"]) for f in routing] == [(1, 2), (2, 2)]
+        assert [(f["step"], f["of"], f["route"]) for f in routing] == [
+            (1, 2, "general_chat"),
+            (2, 2, "general_chat"),
+            (2, 2, "compose"),
+        ]
         # no duplicated citations (steps wrote none; bleed would duplicate)
         assert payload["citations"] == []
     finally:

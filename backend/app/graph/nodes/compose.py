@@ -37,17 +37,78 @@ register(
 _STEP_CHARS = 2000
 
 
+_MARKER_TOKEN = "[{n}]"  # noqa: S105 — a citation marker template, not a secret
+
+
+def renumber_steps(
+    outputs: list[dict[str, Any]],
+) -> tuple[list[str], list[dict[str, Any]]]:
+    """Global citation renumbering across steps.
+
+    Two steps that each cite `[1]` would collide in the composed answer
+    (`[1]` meaning two URLs). Remap ONLY the markers present in each step's
+    own citations list (never a bare `\\[\\d+\\]` sweep — prose and code
+    blocks legitimately contain bracketed numbers), rewriting both the step
+    text and the citation `marker` fields to one global sequence.
+    """
+    texts: list[str] = []
+    merged: list[dict[str, Any]] = []
+    counter = 0
+    for output in outputs:
+        text = str(output.get("output", ""))
+        remapped: list[tuple[str, str]] = []
+        for citation in output.get("citations", []):
+            if not isinstance(citation, dict):
+                continue
+            counter += 1
+            old_marker = str(citation.get("marker", ""))
+            new_marker = _MARKER_TOKEN.format(n=counter)
+            if old_marker and old_marker != new_marker:
+                remapped.append((old_marker, new_marker))
+            merged.append({**citation, "marker": new_marker})
+        # placeholder two-phase swap so [1]->[3] can't collide with a later
+        # [3]->[5] rewrite in the same text
+        for i, (old_marker, _new) in enumerate(remapped):
+            text = text.replace(old_marker, f"\x00{i}\x00")
+        for i, (_old, new_marker) in enumerate(remapped):
+            text = text.replace(f"\x00{i}\x00", new_marker)
+        texts.append(text)
+    return texts, merged
+
+
 async def compose_node(state: AssistantState) -> AssistantState:
     """Stream the combined answer; degrade to concatenated step outputs."""
     outputs = state.get("step_outputs", [])
+    renumbered_texts, merged_citations = renumber_steps(outputs)
     steps_text = "\n\n".join(
         f"### Step {i} — {o.get('route', '?')}: {o.get('task', '')}\n"
-        f"{str(o.get('output', ''))[:_STEP_CHARS]}"
-        for i, o in enumerate(outputs, start=1)
+        f"{text[:_STEP_CHARS]}"
+        for i, (o, text) in enumerate(zip(outputs, renumbered_texts, strict=True), start=1)
     )
-    merged_citations: list[dict[str, Any]] = [
-        c for o in outputs for c in o.get("citations", []) if isinstance(c, dict)
-    ]
+    # step charts/sources must survive into the final payload — per-step
+    # resets would otherwise silently drop step 1's price chart
+    merged_sources: list[str] = []
+    for output in outputs:
+        for source in output.get("sources", []):
+            if source not in merged_sources:
+                merged_sources.append(source)
+    merged_chart: dict[str, Any] = {}
+    for output in outputs:
+        chart = output.get("chart")
+        if isinstance(chart, dict) and chart:
+            merged_chart = chart
+            break
+
+    plan_len = len(state.get("plan_steps", [])) or len(outputs)
+    emit_frame(
+        {
+            "type": "routing",
+            "route": "compose",
+            "reason": "combining step results",
+            "step": plan_len,
+            "of": plan_len,
+        }
+    )
 
     async def on_token(t: str) -> None:
         emit_frame({"type": "token", "delta": t})
@@ -74,5 +135,11 @@ async def compose_node(state: AssistantState) -> AssistantState:
         final = done.text
     except Exception as exc:  # noqa: BLE001 — degrade to raw step outputs
         log.error("node.compose.error", error=str(exc))
-        final = "\n\n---\n\n".join(str(o.get("output", "")) for o in outputs)
-    return {"final_text": final, "citations": merged_citations}
+        # renumbered texts here too, or the fallback answer has colliding markers
+        final = "\n\n---\n\n".join(renumbered_texts)
+    return {
+        "final_text": final,
+        "citations": merged_citations,
+        "sources": merged_sources,
+        "chart": merged_chart,
+    }

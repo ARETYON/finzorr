@@ -29,10 +29,22 @@ async def advance_node(state: AssistantState) -> AssistantState:
             "task": current.get("task", ""),
             "output": state.get("final_text", "")[:STEP_RECORD_CHARS],
             "citations": state.get("citations", []),
+            "chart": state.get("chart", {}),
+            "sources": state.get("sources", []),
         },
     ]
     next_index = index + 1
     result: AssistantState = {"step_outputs": outputs, "plan_index": next_index}
+    # Step-failure handling: the specialists' degradation paths set
+    # `step_error` (the only reliable signal — they return prose, never
+    # raise). One replan attempt per turn; after that, stop marching a
+    # broken plan forward and surface what happened honestly.
+    if state.get("step_error", False) and next_index < len(steps):
+        if state.get("replan_count", 0) == 0:
+            log.warning("plan.step_failed_replanning", step=index + 1)
+            return {**result, "needs_replan": True, "step_error": False}
+        log.warning("plan.step_failed_early_exit", step=index + 1)
+        return {**result, "plan_index": len(steps), "step_error": False}
     if next_index < len(steps):
         next_step = steps[next_index]
         result["route"] = next_step["route"]
@@ -40,6 +52,7 @@ async def advance_node(state: AssistantState) -> AssistantState:
         # each step starts CLEAN: without these resets, step 1's citations/
         # chart/sources bleed into step 2's record and compose duplicates them
         result["final_text"] = ""
+        result["step_error"] = False  # a stale flag would re-trigger replan next advance
         result["citations"] = []
         result["tool_calls"] = []
         result["sources"] = []
@@ -65,7 +78,9 @@ async def advance_node(state: AssistantState) -> AssistantState:
 
 
 def after_step(state: AssistantState) -> str:
-    """Conditional: next specialist, compose (multi-step), or persist."""
+    """Conditional: replan, next specialist, compose (multi-step), or persist."""
+    if state.get("needs_replan", False):
+        return "replan"
     steps = state.get("plan_steps", [])
     index = state.get("plan_index", 0)
     if index < len(steps):
