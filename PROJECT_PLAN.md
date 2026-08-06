@@ -748,11 +748,11 @@ the Word doc regenerated.
 ### Wave 3 — heavy (feasible-free subset; honest gating)
 | # | Feature | Status | Design note |
 |---|---|---|---|
-| 16 | Code interpreter (sandboxed) | WAVE-3 | docker run --rm sandbox, no network, cpu/mem/time limits; dev-only until security review |
-| 17 | Image generation | GATED-ON-KEY | $0-quality not viable (no GPU); tool slot registers when IMAGE_API_* configured |
-| 18 | Canvas/Artifacts (lite) | WAVE-3 | ```document fenced artifacts → side panel, iterate/update, artifacts table |
-| 19 | Share links + personas | WAVE-3 | public read-only /share/{token}; personas table selectable per session |
-| 20 | Gmail/Calendar connectors | WAVE-3 / GATED-ON-KEY | full OAuth code-exchange + encrypted refresh tokens; tools register when GOOGLE_CLIENT_SECRET set |
+| 16 | Code interpreter (sandboxed) | LIVE (dev; env-flagged, off in prod until security review) | docker run --rm sandbox, no network, cpu/mem/time limits; dev-only until security review |
+| 17 | Image generation | LIVE (GATED-ON-KEY: registers when IMAGE_API_* configured) | $0-quality not viable (no GPU); tool slot registers when IMAGE_API_* configured |
+| 18 | Canvas/Artifacts (lite) | LIVE | ```document fenced artifacts → side panel, iterate/update, artifacts table |
+| 19 | Share links + personas | LIVE | public read-only /share/{token}; personas table selectable per session |
+| 20 | Gmail/Calendar connectors | LIVE (GATED-ON-KEY: activates with GOOGLE_CLIENT_SECRET) | full OAuth code-exchange + encrypted refresh tokens; tools register when GOOGLE_CLIENT_SECRET set |
 
 ## 20. Phase 2 roadmap (everything deliberately deferred, in one place)
 

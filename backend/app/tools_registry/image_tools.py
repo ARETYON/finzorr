@@ -39,7 +39,10 @@ async def _generate(args: dict[str, Any]) -> str:
     token = f"gen-{uuid.uuid4().hex}.png"
     await get_storage().save(f"attachments/{user_id}/{token}", base64.b64decode(b64))
     log.info("image.generated", user_id=user_id)
-    return f"Image generated. Embed it exactly as: ![generated image](/api/chat/attachments/{token})"
+    return (
+        "Image generated. Embed it exactly as: "
+        f"![generated image](/api/chat/attachments/{token})"
+    )
 
 
 def register_image_tools() -> int:
