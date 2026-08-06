@@ -59,11 +59,13 @@ BRANCHES: dict[Hashable, str] = {
 _graph: Any = None
 _has_checkpointer = False
 _pool: Any = None
+_store: Any = None
 _lock = asyncio.Lock()
 
 # Small pool: checkpoint I/O is short-lived; the dev/prod VM is deliberately
-# tiny, so cap connections rather than scale with users.
-_POOL_MIN, _POOL_MAX = 1, 4
+# tiny, so cap connections rather than scale with users. Bumped 4→6 when the
+# LangGraph store (memory search, on every turn's hot path) joined the pool.
+_POOL_MIN, _POOL_MAX = 1, 6
 
 # Degraded (checkpointer-less) mode is a state, not a life sentence: retry the
 # attach this often. Previously it was decided once at first request forever.
@@ -170,7 +172,7 @@ async def get_graph() -> tuple[Any, bool]:
     re-attempted every _DEGRADED_RETRY_S — a Postgres blip at boot must not
     condemn the process to statelessness for its whole life.
     """
-    global _graph, _has_checkpointer, _pool, _degraded_retry_at  # noqa: PLW0603
+    global _graph, _has_checkpointer, _pool, _store, _degraded_retry_at  # noqa: PLW0603
     now = asyncio.get_running_loop().time()
     if _graph is not None and (_has_checkpointer or now < _degraded_retry_at):
         return _graph, _has_checkpointer
@@ -199,8 +201,30 @@ async def get_graph() -> tuple[Any, bool]:
             await pool.open(wait=True, timeout=10)
             checkpointer = AsyncPostgresSaver(pool)
             await checkpointer.setup()
+            store: Any = None
+            try:
+                # BaseStore-backed long-term memory: shares the pool (same
+                # autocommit/dict_row kwargs the store expects); the semantic
+                # index needs pgvector — on plain Postgres, setup() fails and
+                # memory degrades to the legacy Qdrant path, never to "off".
+                from langgraph.store.postgres import AsyncPostgresStore
+
+                from app.memory.store_embed import store_index
+
+                store = AsyncPostgresStore(pool, index=cast(Any, store_index()))
+                await store.setup()
+                log.info("graph.store", backend="postgres-pgvector")
+            except Exception as store_exc:  # noqa: BLE001 — Qdrant fallback covers memory
+                log.warning("graph.store.unavailable", error=str(store_exc))
+                store = None
             _pool = pool
-            _graph = builder.compile(checkpointer=checkpointer, cache=InMemoryCache())
+            _store = store
+            if store is not None:
+                _graph = builder.compile(
+                    checkpointer=checkpointer, cache=InMemoryCache(), store=store
+                )
+            else:
+                _graph = builder.compile(checkpointer=checkpointer, cache=InMemoryCache())
             _has_checkpointer = True
             log.info("graph.compiled", checkpointer="postgres-pool", pool_max=_POOL_MAX)
         except Exception as exc:  # noqa: BLE001 — degrade to stateless, retry later
@@ -214,12 +238,23 @@ async def get_graph() -> tuple[Any, bool]:
         return _graph, _has_checkpointer
 
 
+def get_store() -> Any:
+    """The LangGraph BaseStore when available (None => Qdrant fallback)."""
+    return _store
+
+
 async def close_graph() -> None:
-    """Release the checkpointer pool on shutdown (no-op when degraded)."""
-    global _graph, _has_checkpointer, _pool  # noqa: PLW0603
+    """Release the store batch task + checkpointer pool on shutdown."""
+    global _graph, _has_checkpointer, _pool, _store  # noqa: PLW0603
+    if _store is not None:
+        # AsyncBatchedBaseStore spawns a background batch task that only
+        # __del__ would cancel — do it deterministically here.
+        task = getattr(_store, "_task", None)
+        if task is not None:
+            task.cancel()
     if _pool is not None:
         try:
             await _pool.close()
         except Exception as exc:  # noqa: BLE001 — shutdown must not raise
             log.warning("graph.pool.close_failed", error=str(exc))
-    _graph, _has_checkpointer, _pool = None, False, None
+    _graph, _has_checkpointer, _pool, _store = None, False, None, None

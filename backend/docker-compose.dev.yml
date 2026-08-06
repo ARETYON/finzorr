@@ -5,7 +5,7 @@
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16  # pgvector required by the LangGraph store's semantic index
     container_name: finzorr-postgres
     environment:
       POSTGRES_USER: finzorr

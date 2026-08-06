@@ -54,6 +54,16 @@ def shape_facts(raw_facts: list[Any]) -> list[str]:
     return [f for f in facts if f][:MAX_FACTS_PER_TURN]
 
 
+def _store() -> "Any | None":
+    """LangGraph BaseStore when the pgvector index is up; None => Qdrant."""
+    from app.graph.graph import get_store
+
+    return get_store()
+
+
+_NAMESPACE = "memories"
+
+
 async def extract_and_store(user_id: str, user_msg: str, reply: str) -> int:
     """Fire-and-forget worker: extract facts and upsert them. Returns count."""
     try:
@@ -76,6 +86,15 @@ async def extract_and_store(user_id: str, user_msg: str, reply: str) -> int:
         facts = shape_facts(json.loads(match.group(0)) if match else [])
         if not facts:
             return 0
+        store = _store()
+        if store is not None:
+            # BaseStore path: namespaced put; the store's pgvector index
+            # embeds `text` itself (same 768-dim Ollama embedder)
+            for fact in facts:
+                key = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{user_id}/fact/{fact.lower()}"))
+                await store.aput((_NAMESPACE, user_id), key, {"text": fact})
+            log.info("memory.stored", user_id=user_id, facts=len(facts), backend="store")
+            return len(facts)
         vectors = await embed_texts(facts)
         await ensure_collection()
         points = [
@@ -103,6 +122,14 @@ async def extract_and_store(user_id: str, user_msg: str, reply: str) -> int:
 async def recall(user_id: str, query: str) -> list[str]:
     """Top-k facts relevant to the incoming message (best-effort)."""
     try:
+        store = _store()
+        if store is not None:
+            hits = await store.asearch((_NAMESPACE, user_id), query=query, limit=RECALL_TOP_K)
+            return [
+                str(item.value.get("text", ""))
+                for item in hits
+                if item.score is None or item.score >= RECALL_MIN_SCORE
+            ]
         vector = await embed_query(query)
         hits = await search(
             vector, tenants=[tenant_for(user_id)], top_k=RECALL_TOP_K, min_score=RECALL_MIN_SCORE
@@ -114,6 +141,10 @@ async def recall(user_id: str, query: str) -> list[str]:
 
 async def list_facts(user_id: str) -> list[dict[str, str]]:
     """Every stored fact for the settings UI."""
+    store = _store()
+    if store is not None:
+        items = await store.asearch((_NAMESPACE, user_id), limit=200)
+        return [{"id": item.key, "text": str(item.value.get("text", ""))} for item in items]
     await ensure_collection()
     points, _ = await get_client().scroll(
         COLLECTION,
@@ -132,6 +163,12 @@ async def list_facts(user_id: str) -> list[dict[str, str]]:
 
 async def delete_fact(user_id: str, point_id: str) -> None:
     """Delete one fact — only if it belongs to this user's tenant."""
+    store = _store()
+    if store is not None:
+        # namespace ownership is structural: the delete is scoped to this
+        # user's namespace, so another user's key can't be reached
+        await store.adelete((_NAMESPACE, user_id), point_id)
+        return
     facts = await list_facts(user_id)
     if any(f["id"] == point_id for f in facts):
         await get_client().delete(

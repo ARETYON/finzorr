@@ -28,6 +28,11 @@ RUNTIME_OWNED_TABLES = {
     "checkpoint_blobs",
     "checkpoint_writes",
     "checkpoint_migrations",
+    # LangGraph BaseStore tables (store.setup(), not our models)
+    "store",
+    "store_migrations",
+    "vector_migrations",
+    "store_vectors",
 }
 
 

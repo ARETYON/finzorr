@@ -15,7 +15,7 @@ jobs:
         working-directory: backend
     services:
       postgres:
-        image: postgres:16-alpine
+        image: pgvector/pgvector:pg16  # store tests must exercise the real vector index, not the fallback
         env:
           POSTGRES_USER: finzorr
           POSTGRES_PASSWORD: finzorr
