@@ -336,8 +336,17 @@ async def _drive_graph(
     """Stream one graph invocation under the per-turn deadline."""
     out: AssistantState = {}
     # explicit recursion ceiling: langgraph 1.x's default (10007) is no
-    # backstop; a 3-step plan with full tool loops fits comfortably in 50
-    run_config = {**config, "recursion_limit": 50}
+    # backstop; a 3-step plan with full tool loops fits comfortably in 50.
+    # run_name/metadata/tags surface in LangSmith when tracing is enabled —
+    # a resumed turn is a separate root trace by design, so session_id is
+    # what stitches a conversation's traces together there.
+    run_config = {
+        **config,
+        "recursion_limit": 50,
+        "run_name": "assistant-turn",
+        "metadata": {"session_id": str(session_id)},
+        "tags": [settings.APP_ENV],
+    }
     async with asyncio.timeout(settings.TURN_TIMEOUT_S):
         with span("turn", session_id=str(session_id)) as turn_span:
             async for mode, chunk in graph.astream(

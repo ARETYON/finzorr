@@ -620,6 +620,19 @@ flowchart TD
   which requires ClickHouse and is too heavy for a 6–8 GB VM). Traces: route decision,
   node timings, tool calls/results, retrieved chunk IDs + scores, generated SQL, token
   counts, feedback rating. Always on in dev/UAT; env-flagged in prod.
+- **LangSmith tracing** (free tier; opt-in via `LANGSMITH_TRACING` + API key in
+  local `.env`, default OFF). One env-export at startup lights up the whole
+  stack: the compiled LangGraph traces itself as an `assistant-turn` root run
+  (tagged with env, carrying `session_id` metadata — a resumed turn is a new
+  root by design, session_id stitches them), every node including Send
+  fan-out branches appears as a child run, and the custom httpx LLM calls
+  surface as `llm` runs via one `@traceable` on the completion choke point —
+  with token usage (`usage_metadata`) and `ls_provider`/`ls_model_name` so
+  the dashboard renders model stats. Live-verified: full tree
+  supervisor→specialist→advance→persist with nested llm.calls in the
+  `finzorr` project. Privacy note: when enabled, prompts and outputs leave
+  the machine — keep it off if that matters; keys live in gitignored `.env`
+  only. Complements (does not replace) the OTel/Phoenix spans.
 - **UptimeRobot** (free) pings `/healthz` on UAT + PROD, email alerts, free public
   status page.
 - **Sentry** free tier (5k events/mo) for backend + frontend error tracking,
@@ -1076,6 +1089,8 @@ The complete reasoning record for the three post-build improvement waves. Each e
 ### Wave 5 — Final-10 (the last named gates, plan adversarially reviewed before execution)
 
 59. **Every remaining named 10-gate closed in one wave.** *What:* (agentic) the live plan-quality judge grew 5→15 prompts across three rubrics and became an ENFORCED release gate — `--live --min-score 7`, executed and recorded (mean 9.1/10, model `qwen2.5:14b-instruct`, 2026-08-06) with the command added to §22's checklist; a lexical parallel-dependency guard (`_steps_look_dependent`) demotes referential fan-outs to sequential, with anchored markers so screener language ("above 500cr", "previous close") can never be demoted — false-positive tests pin that, and the plan-eval mechanics grew to 25 checks with a COMPUTED total (the hardcoded `total = 20` would have silently misreported forever). (general) router-level 404/405 envelope regression tests incl. `Allow` passthrough; the four bounded bare lists document their by-design contract in OpenAPI (shared `BARE_LIST_DESCRIPTION` + a test asserting it under both mounts); nine explicit jsx-a11y rules as errors, each VERIFIED to fire (oxlint silently ignores unknown rule names — an unverified ruleset is decorative); deterministic WS turn-lifecycle tests (frame mirroring order, busy guard mid-turn, cancel → stopped + partial and turn_id to the persist path). *Why:* both re-scores published exactly what separated 9.0/7.5 from 10; a wave that closes every NAMED code-reachable item leaves the number to the reviewers, not to unfinished work. The judge's "replan sanity" rubric was deliberately dropped — the plan reviewer caught that the live harness only calls `plan_and_route`, so prompts written for that rubric would be judged on something else entirely (an eval that can't exercise its stated rubric is worse than no eval). *How:* the wave's plan went through an adversarial Plan-agent review first (regex anchoring, the CI path-filter single-commit requirement, the silent-unknown-rule trap all came from it); every change carries its regression test in the same commit; suite 290 tests, CI marker-union 73.9% vs the 70 gate.
+
+60. **LangSmith tracing integrated — secrets never in the repo.** *What:* opt-in LangSmith tracing (`LANGSMITH_TRACING`/`_API_KEY`/`_PROJECT`/`_ENDPOINT` Settings, default OFF): a startup helper exports the env vars langchain-core/langsmith actually read and clears their `lru_cache`d probes (`get_env_var`, `get_tracer_project` latch their first read — without the clear, anything probing tracing before startup would pin it off forever); `@traceable(run_type="llm")` on the single completion choke point (`_run_stream`) with `usage_metadata` + `ls_provider`/`ls_model_name` set via `get_current_run_tree()`; `run_name="assistant-turn"` + `session_id` metadata + env tag on every graph invocation. Real key lives in gitignored `.env` only; `.env.example` carries empty placeholders (CI env-parity gate). *Why:* the user wants production-grade trace visibility in their LangSmith org; the compiled graph is already a langchain Runnable so it traces itself (nodes and Send branches included) — but our LLM calls are raw httpx, invisible to LangSmith without the one decorator. All mechanics were verified against the INSTALLED versions before coding (env-var precedence LANGSMITH_ > LANGCHAIN_, "true" exactness, no interaction with interrupt/Send/CachePolicy, ~0.1ms no-op when disabled). *How:* zero new dependencies (langsmith ships transitively with langchain-core); three sanity tests pin the export behavior (disabled touches nothing, no key stays off, enabled exports exactly the right vars); live-verified end-to-end — `assistant-turn` root runs in the `finzorr` project with the full node tree and nested `llm` runs carrying real token counts.
 
 ---
 

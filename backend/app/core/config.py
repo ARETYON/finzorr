@@ -79,6 +79,13 @@ class Settings(BaseSettings):
     # OTLP traces endpoint (e.g. self-hosted Phoenix http://localhost:6006/v1/traces);
     # empty disables tracing entirely
     OTEL_EXPORTER_OTLP_ENDPOINT: str = ""
+    # LangSmith tracing (free tier; default OFF). When enabled, prompts and
+    # outputs leave the machine — the graph, every node (incl. Send branches),
+    # and LLM calls with token usage appear in the LangSmith project.
+    LANGSMITH_TRACING: bool = False
+    LANGSMITH_API_KEY: str = ""
+    LANGSMITH_PROJECT: str = "finzorr"
+    LANGSMITH_ENDPOINT: str = ""  # empty = https://api.smith.langchain.com
 
     # --- Web search ---
     TAVILY_API_KEY: str = ""

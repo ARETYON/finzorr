@@ -12,6 +12,8 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 
+from langsmith import get_current_run_tree, traceable
+
 from app.ai.base import ChatMessage, StreamDone, TextDelta, ToolDefinition, Usage
 from app.ai.registry import default_model, get_provider
 from app.core.config import settings
@@ -53,6 +55,11 @@ async def _record_usage(provider: str, usage: Usage) -> None:
         log.warning("ai.usage.record_failed", provider=provider)
 
 
+# The single LLM choke point: the compiled graph traces itself into
+# LangSmith (nodes included), but these calls are raw httpx — @traceable is
+# what makes them appear as llm runs. It NO-OPS when tracing is disabled
+# (no client, no network, ~0.1ms).
+@traceable(run_type="llm", name="llm.call")
 async def _run_stream(
     provider_name: str,
     messages: list[ChatMessage],
@@ -85,6 +92,16 @@ async def _run_stream(
         llm_span.set_attribute("prompt_tokens", done.usage.prompt_tokens)
         llm_span.set_attribute("completion_tokens", done.usage.completion_tokens)
         llm_span.set_attribute("tool_calls", len(done.tool_calls))
+    run_tree = get_current_run_tree()
+    if run_tree is not None:  # tracing on: token usage + model stats render
+        run_tree.set(
+            usage_metadata={
+                "input_tokens": done.usage.prompt_tokens,
+                "output_tokens": done.usage.completion_tokens,
+                "total_tokens": done.usage.total_tokens,
+            },
+            metadata={"ls_provider": provider.name, "ls_model_name": resolved_model},
+        )
     await _record_usage(provider.name, done.usage)
     log.info(
         "ai.call",

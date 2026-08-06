@@ -36,6 +36,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     from app.core.otel import setup_tracing
 
     setup_tracing()
+    from app.core.langsmith_setup import setup_langsmith
+
+    setup_langsmith()  # BEFORE any graph invocation — env vars + cache clear
     # Optional tool families — absence of keys/config is graceful, never fatal.
     try:
         from app.mcp_client.github_client import register_github_tools
