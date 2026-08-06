@@ -5,8 +5,11 @@ from app.models.document import Document
 from app.models.feedback import Feedback
 from app.models.fundamental import Fundamental
 from app.models.message import Message
+from app.models.oauth_token import OAuthToken
+from app.models.persona import Persona
 from app.models.price_alert import PriceAlert
 from app.models.scheduled_task import ScheduledTask
+from app.models.share_token import ShareToken
 from app.models.user import User
 from app.models.watchlist_item import WatchlistItem
 
@@ -16,8 +19,11 @@ __all__ = [
     "Feedback",
     "Fundamental",
     "Message",
+    "OAuthToken",
+    "Persona",
     "PriceAlert",
     "ScheduledTask",
+    "ShareToken",
     "User",
     "WatchlistItem",
 ]

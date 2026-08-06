@@ -12,7 +12,18 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.logging import configure_logging, log
-from app.routers import attachments, auth, chat, chat_ws, documents, health, market, watchlist
+from app.routers import (
+    attachments,
+    auth,
+    chat,
+    chat_ws,
+    documents,
+    health,
+    integrations,
+    market,
+    sharing,
+    watchlist,
+)
 
 
 @asynccontextmanager
@@ -33,6 +44,20 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         register_microservice_tools()
     except Exception as exc:  # noqa: BLE001
         log.warning("startup.microservice_tools_failed", error=str(exc))
+    try:
+        from app.tools_registry.code_tools import register_code_tools
+        from app.tools_registry.image_tools import register_image_tools
+
+        register_code_tools()
+        register_image_tools()
+    except Exception as exc:  # noqa: BLE001
+        log.warning("startup.optional_tools_failed", error=str(exc))
+    try:
+        from app.integrations.google_connect import register_google_tools
+
+        register_google_tools()
+    except Exception as exc:  # noqa: BLE001
+        log.warning("startup.google_connectors_failed", error=str(exc))
     scheduler_task = None
     if settings.SCHEDULER_ENABLED:
         import asyncio
@@ -64,6 +89,8 @@ app.include_router(market.router)
 app.include_router(documents.router)
 app.include_router(watchlist.router)
 app.include_router(attachments.router)
+app.include_router(integrations.router)
+app.include_router(sharing.router)
 
 if settings.is_dev:
     from app.routers import debug

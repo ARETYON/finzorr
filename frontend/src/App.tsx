@@ -7,6 +7,7 @@ import '@fontsource/jetbrains-mono/400.css'
 import '@fontsource/jetbrains-mono/700.css'
 import Chat from './pages/Chat'
 import Login from './pages/Login'
+import Share from './pages/Share'
 import { useAuthStore } from './store/authStore'
 import './store/themeStore' // applies persisted theme before first paint
 
@@ -34,6 +35,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/chat" replace />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/share/:token" element={<Share />} />
         <Route
           path="/chat"
           element={

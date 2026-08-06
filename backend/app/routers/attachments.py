@@ -3,6 +3,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi.responses import Response
 
 from app.auth.dependencies import get_current_user
 from app.documents.storage import get_storage
@@ -36,3 +37,16 @@ async def upload_attachment(
     token = f"{uuid.uuid4().hex}.{ext}"
     await get_storage().save(f"attachments/{user.id}/{token}", data)
     return {"token": token, "mime": mime}
+
+
+@router.get("/{token}")
+async def get_attachment(token: str, user: User = Depends(get_current_user)) -> Response:
+    """Serve one of the user's own attachments (uploaded or generated)."""
+    if "/" in token or ".." in token:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad token")
+    try:
+        data = await get_storage().load(f"attachments/{user.id}/{token}")
+    except FileNotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "not found") from exc
+    mime = "image/png" if token.endswith(".png") else "image/jpeg"
+    return Response(content=data, media_type=mime)

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Trash2, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { deleteMemory, listMemories, updateMe, type MemoryFact } from '../api/auth'
+import { createPersona, deletePersona, listPersonas, type PersonaInfo } from '../api/extras'
 import { useAuthStore } from '../store/authStore'
 import { useSettingsStore } from '../store/settingsStore'
 
@@ -13,13 +14,40 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   const [instructions, setInstructions] = useState('')
   const [saving, setSaving] = useState(false)
   const [memories, setMemories] = useState<MemoryFact[]>([])
+  const [personas, setPersonas] = useState<PersonaInfo[]>([])
+  const [newPersonaName, setNewPersonaName] = useState('')
+  const [newPersonaPrompt, setNewPersonaPrompt] = useState('')
 
   useEffect(() => {
     setInstructions(user?.custom_instructions ?? '')
     listMemories()
       .then(setMemories)
       .catch(() => undefined)
+    listPersonas()
+      .then(setPersonas)
+      .catch(() => undefined)
   }, [user])
+
+  const addPersona = async () => {
+    if (!newPersonaName.trim() || !newPersonaPrompt.trim()) return
+    try {
+      await createPersona(newPersonaName.trim(), newPersonaPrompt.trim())
+      setNewPersonaName('')
+      setNewPersonaPrompt('')
+      setPersonas(await listPersonas())
+    } catch {
+      toast.error('Could not create persona')
+    }
+  }
+
+  const removePersona = async (id: string) => {
+    try {
+      await deletePersona(id)
+      setPersonas((prev) => prev.filter((p) => p.id !== id))
+    } catch {
+      toast.error('Could not delete persona')
+    }
+  }
 
   const removeMemory = async (id: string) => {
     try {
@@ -91,6 +119,55 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
               </li>
             ))}
           </ul>
+        </div>
+        <div className="mt-4">
+          <span className="mb-1 block text-xs font-medium text-ink-mid">Personas</span>
+          <ul className="mb-2 space-y-1">
+            {personas.map((p) => (
+              <li key={p.id} className="group flex items-center gap-2 text-[12px] text-ink-mid">
+                <span className="flex-1 truncate" title={p.system_prompt}>• {p.name}</span>
+                <button
+                  onClick={() => void removePersona(p.id)}
+                  className="hidden text-ink-faint hover:text-danger group-hover:block"
+                  aria-label={`Delete ${p.name}`}
+                >
+                  <Trash2 size={11} />
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div className="flex gap-1.5">
+            <input
+              value={newPersonaName}
+              onChange={(e) => setNewPersonaName(e.target.value)}
+              placeholder="Name"
+              className="w-28 rounded border border-line-strong bg-panel px-2 py-1 text-xs text-ink"
+            />
+            <input
+              value={newPersonaPrompt}
+              onChange={(e) => setNewPersonaPrompt(e.target.value)}
+              placeholder="Persona instructions…"
+              className="flex-1 rounded border border-line-strong bg-panel px-2 py-1 text-xs text-ink"
+            />
+            <button
+              onClick={() => void addPersona()}
+              className="text-xs font-medium text-accent-strong"
+            >
+              Add
+            </button>
+          </div>
+        </div>
+        <div className="mt-4">
+          <span className="mb-1 block text-xs font-medium text-ink-mid">Integrations</span>
+          <a
+            href="/api/integrations/google/authorize"
+            className="clip-btn inline-block rounded-lg border border-line-strong px-3 py-1.5 text-xs font-medium text-ink-mid hover:bg-surface"
+          >
+            Connect Google (Gmail + Calendar, read-only)
+          </a>
+          <p className="mt-1 text-[10px] text-ink-faint">
+            Requires the server to be configured with a Google OAuth client secret.
+          </p>
         </div>
         <label className="mt-4 flex items-center gap-2 text-sm text-ink-mid">
           <input

@@ -76,6 +76,18 @@ class Settings(BaseSettings):
     MAX_UPLOAD_PAGES: int = 100
     MAX_DOCS_PER_USER: int = 20
 
+    # --- Code interpreter (sandboxed docker; dev-first, off in prod) ---
+    CODE_INTERPRETER: bool = False
+
+    # --- Image generation (provider slot; registers only when configured) ---
+    IMAGE_API_URL: str = ""
+    IMAGE_API_KEY: str = ""
+    IMAGE_MODEL: str = ""
+
+    # --- Google connectors (Gmail/Calendar; full OAuth, gated on secret) ---
+    GOOGLE_CLIENT_SECRET: str = ""
+    OAUTH_REDIRECT_URL: str = "http://localhost:8000/api/integrations/google/callback"
+
     # --- Scheduler (briefings / alerts / tasks) ---
     SCHEDULER_ENABLED: bool = True
     BRIEFING_TIME_IST: str = "08:30"

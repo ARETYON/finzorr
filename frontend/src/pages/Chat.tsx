@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Download } from 'lucide-react'
+import { Download, Share2 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import ArtifactPanel, {
+  extractArtifact,
+  type Artifact,
+} from '../components/chat/ArtifactPanel'
+import PersonaPicker from '../components/chat/PersonaPicker'
 import ChatSidebar from '../components/chat/ChatSidebar'
+import { createShareLink } from '../api/extras'
 import MessageBubble from '../components/chat/MessageBubble'
 import MessageInput from '../components/chat/MessageInput'
 import { useChatSocket } from '../hooks/useChatSocket'
@@ -18,6 +24,7 @@ export default function Chat() {
   const [thinking, setThinking] = useState(false)
   const [watchlistRefreshKey, setWatchlistRefreshKey] = useState(0)
   const [prefill, setPrefill] = useState('')
+  const [artifact, setArtifact] = useState<Artifact | null>(null)
   const lastUserMsgRef = useRef('')
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -69,6 +76,10 @@ export default function Chat() {
           void useChatStore.getState().loadSessions() // pick up auto-titles
           setWatchlistRefreshKey((k) => k + 1) // reflect chat-driven watchlist edits
           if (useSettingsStore.getState().autoRead) speak(frame.message)
+          {
+            const doc = extractArtifact(frame.message)
+            if (doc) setArtifact(doc)
+          }
           break
         case 'stopped':
           setThinking(false)
@@ -108,6 +119,18 @@ export default function Chat() {
     if (last && activeSessionId) void handleSend(last)
   }
 
+  const shareChat = async () => {
+    if (!activeSessionId) return
+    try {
+      const token = await createShareLink(activeSessionId)
+      const url = `${location.origin}/share/${token}`
+      await navigator.clipboard.writeText(url)
+      toast.success('Share link copied to clipboard')
+    } catch {
+      toast.error('Could not create share link')
+    }
+  }
+
   const exportChat = () => {
     const title = sessions.find((s) => s.id === activeSessionId)?.title ?? 'finzorr-chat'
     const md = messages
@@ -135,6 +158,17 @@ export default function Chat() {
             <span className="fui-label">dossier · active thread</span>
           </div>
           <div className="flex items-center gap-3">
+            <PersonaPicker sessionId={activeSessionId} />
+            {messages.length > 0 && (
+              <button
+                onClick={() => void shareChat()}
+                className="text-ink-faint hover:text-ink-mid"
+                aria-label="Share conversation"
+                title="Copy public share link"
+              >
+                <Share2 size={14} />
+              </button>
+            )}
             {messages.length > 0 && (
               <button
                 onClick={exportChat}
@@ -194,6 +228,7 @@ export default function Chat() {
           onPrefillConsumed={() => setPrefill('')}
         />
       </main>
+      {artifact && <ArtifactPanel artifact={artifact} onClose={() => setArtifact(null)} />}
     </div>
   )
 }

@@ -36,10 +36,20 @@ async def _load_history(session_id: uuid.UUID) -> list[dict[str, Any]]:
     return [{"role": m.role, "content": m.content} for m in reversed(rows)]
 
 
-async def _load_instructions(user_id: uuid.UUID) -> str:
+async def _load_instructions(user_id: uuid.UUID, session_id: uuid.UUID) -> str:
+    """Custom instructions + the session's persona prompt, merged."""
+    from app.models.chat_session import ChatSession
+    from app.models.persona import Persona
+
     async with SessionLocal() as db:
         user = await db.get(User, user_id)
-        return (user.custom_instructions or "") if user else ""
+        parts = [(user.custom_instructions or "") if user else ""]
+        session = await db.get(ChatSession, session_id)
+        if session is not None and session.persona_id is not None:
+            persona = await db.get(Persona, session.persona_id)
+            if persona is not None:
+                parts.append(f"Adopt this persona for every reply: {persona.system_prompt}")
+    return "\n".join(p for p in parts if p).strip()
 
 
 async def _vision_turn(
@@ -100,7 +110,7 @@ async def run_turn(
     if attachments:
         return await _vision_turn(session_id, user_id, user_msg, attachments)
     graph, has_checkpointer = await get_graph()
-    user_instructions = await _load_instructions(user_id)
+    user_instructions = await _load_instructions(user_id, session_id)
     from app.memory.facts import extract_and_store, recall
 
     memories = await recall(str(user_id), user_msg)

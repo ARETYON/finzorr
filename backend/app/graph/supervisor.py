@@ -35,7 +35,8 @@ _SQL_HINTS = re.compile(
 _TOOL_HINTS = re.compile(
     r"\b(price|quote|trading at|share price|52.week|overview of|fundamentals of|"
     r"history|historical|performance of|volume|my (portfolio|holdings)|"
-    r"deep research|research report)\b",
+    r"deep research|research report|run (python|code)|execute (python|code)|"
+    r"compute|calculate)\b",
     re.IGNORECASE,
 )
 _RAG_HINTS = re.compile(
@@ -66,8 +67,9 @@ register(
             "- nl2sql: screening/filtering MANY stocks by metrics (P/E, yield, "
             "market cap...)\n"
             "- tools: live price/quote/fundamentals/history of SPECIFIC stocks, the "
-            "user's PORTFOLIO/holdings performance, deep research reports, or "
-            "reading/summarizing a URL the user pasted\n\n"
+            "user's PORTFOLIO/holdings performance, deep research reports, "
+            "running/executing Python code or calculations, or reading/summarizing "
+            "a URL the user pasted\n\n"
             'Reply with ONLY JSON: {{"route": "<one of the six>", '
             '"plan": ["<step>", ...], "reason": "<short>"}}'
         ),

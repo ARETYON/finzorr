@@ -46,6 +46,9 @@ register(
             "- For live prices, screening, news, or the user's documents, other "
             "specialist tools handle those — answer conversationally from general "
             "knowledge and say when data may be outdated.\n"
+            "- When asked to draft a reusable document/report/essay/plan, wrap it in "
+            "a fenced block starting ```document with the title on the first line, "
+            "then the content, then ``` — brief commentary goes outside the block.\n"
             "- If a reply gives finance/investment information, end with: "
             f'"{DISCLAIMER}"\n'
             "- User's name: {user_name}."
