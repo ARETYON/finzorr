@@ -3,12 +3,12 @@
 import asyncio
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 from sqlalchemy.pool import NullPool
 
 import app.models  # noqa: F401 — registers every table on Base.metadata
+from alembic import context
 from app.core.config import settings
 from app.db.base import Base
 
@@ -34,10 +34,11 @@ RUNTIME_OWNED_TABLES = {
 def _include_object(obj, name, type_, reflected, compare_to):  # noqa: ANN001, ANN202
     if type_ == "table" and name in RUNTIME_OWNED_TABLES:
         return False
-    if type_ == "index" and getattr(obj, "table", None) is not None:
-        if obj.table.name in RUNTIME_OWNED_TABLES:
-            return False
-    return True
+    return not (
+        type_ == "index"
+        and getattr(obj, "table", None) is not None
+        and obj.table.name in RUNTIME_OWNED_TABLES
+    )
 
 
 def run_migrations_offline() -> None:

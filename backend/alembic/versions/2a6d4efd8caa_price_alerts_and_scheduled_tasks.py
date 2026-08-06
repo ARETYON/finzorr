@@ -5,17 +5,17 @@ Revises: fce76aac011d
 Create Date: 2026-08-06 08:52:19.017084
 
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
+
+import sqlalchemy as sa
 
 from alembic import op
-import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = '2a6d4efd8caa'
-down_revision: Union[str, Sequence[str], None] = 'fce76aac011d'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = 'fce76aac011d'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

@@ -44,4 +44,17 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute(f"DROP ROLE IF EXISTS {_ROLE}")
+    # Roles are cluster-wide: revoke this DB's grants, then drop the role only
+    # if nothing else (another database's grants) still depends on it.
+    op.execute(f"REVOKE ALL ON ALL TABLES IN SCHEMA public FROM {_ROLE}")
+    op.execute(f"REVOKE USAGE ON SCHEMA public FROM {_ROLE}")
+    op.execute(
+        f"""
+        DO $$
+        BEGIN
+            DROP ROLE IF EXISTS {_ROLE};
+        EXCEPTION WHEN dependent_objects_still_exist THEN
+            RAISE NOTICE 'role {_ROLE} still referenced elsewhere; leaving it';
+        END $$;
+        """
+    )

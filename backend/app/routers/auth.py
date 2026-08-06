@@ -11,6 +11,7 @@ from app.core.logging import log
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.auth import GoogleLoginIn, UserOut, UserUpdateIn
+from app.schemas.misc import LogoutOut, MemoryFactOut
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -57,11 +58,11 @@ async def dev_login(response: Response, db: AsyncSession = Depends(get_db)) -> U
     return user
 
 
-@router.post("/logout")
-async def logout(response: Response) -> dict[str, bool]:
+@router.post("/logout", response_model=LogoutOut)
+async def logout(response: Response) -> LogoutOut:
     """Clear the session cookie."""
     response.delete_cookie(SESSION_COOKIE, domain=settings.COOKIE_DOMAIN or None)
-    return {"ok": True}
+    return LogoutOut(ok=True)
 
 
 @router.patch("/me", response_model=UserOut)
@@ -84,12 +85,12 @@ async def me(user: User = Depends(get_current_user)) -> User:
     return user
 
 
-@router.get("/memories")
-async def list_memories(user: User = Depends(get_current_user)) -> list[dict[str, str]]:
+@router.get("/memories", response_model=list[MemoryFactOut])
+async def list_memories(user: User = Depends(get_current_user)) -> list[MemoryFactOut]:
     """The user's stored long-term memory facts."""
     from app.memory.facts import list_facts
 
-    return await list_facts(str(user.id))
+    return [MemoryFactOut(**f) for f in await list_facts(str(user.id))]
 
 
 @router.delete("/memories/{fact_id}", status_code=204)

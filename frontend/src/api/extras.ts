@@ -24,8 +24,14 @@ export async function setSessionPersona(sessionId: string, personaId: string | n
 }
 
 export async function createShareLink(sessionId: string): Promise<string> {
-  const { data } = await api.post<{ token: string }>(`/api/chat/sessions/${sessionId}/share`)
+  const { data } = await api.post<{ token: string; expires_at: string | null }>(
+    `/api/chat/sessions/${sessionId}/share`,
+  )
   return data.token
+}
+
+export async function revokeShareLinks(sessionId: string): Promise<void> {
+  await api.delete(`/api/chat/sessions/${sessionId}/share`)
 }
 
 export interface SharedChat {

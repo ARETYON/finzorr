@@ -6,13 +6,16 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import Response
 
 from app.auth.dependencies import get_current_user
+from app.core.rate_limit import check_rate_limit
 from app.documents.storage import get_storage
 from app.models.user import User
+from app.schemas.misc import AttachmentUploadOut
 
 router = APIRouter(prefix="/api/chat/attachments", tags=["attachments"])
 
 _MAX_IMAGE_MB = 5
 _MAGIC = {b"\x89PNG": "image/png", b"\xff\xd8\xff": "image/jpeg"}
+_READ_CHUNK = 1024 * 1024
 
 
 def mime_for(data: bytes) -> str | None:
@@ -22,21 +25,30 @@ def mime_for(data: bytes) -> str | None:
     return None
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=AttachmentUploadOut, status_code=status.HTTP_201_CREATED)
 async def upload_attachment(
     file: UploadFile, user: User = Depends(get_current_user)
-) -> dict[str, str]:
+) -> AttachmentUploadOut:
     """Accept a PNG/JPEG image for the next chat message."""
-    data = await file.read()
-    if len(data) > _MAX_IMAGE_MB * 1024 * 1024:
-        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "image exceeds 5MB")
+    if not await check_rate_limit(f"upload:{user.id}"):
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS, "upload limit reached — please wait"
+        )
+    chunks: list[bytes] = []
+    total = 0
+    while chunk := await file.read(_READ_CHUNK):
+        total += len(chunk)
+        if total > _MAX_IMAGE_MB * 1024 * 1024:
+            raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "image exceeds 5MB")
+        chunks.append(chunk)
+    data = b"".join(chunks)
     mime = mime_for(data)
     if mime is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "only PNG/JPEG images are supported")
     ext = "png" if mime == "image/png" else "jpg"
     token = f"{uuid.uuid4().hex}.{ext}"
     await get_storage().save(f"attachments/{user.id}/{token}", data)
-    return {"token": token, "mime": mime}
+    return AttachmentUploadOut(token=token, mime=mime)
 
 
 @router.get("/{token}")

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Download, Share2 } from 'lucide-react'
+import { Download, Link2Off, Share2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import ArtifactPanel, {
   extractArtifact,
@@ -7,7 +7,7 @@ import ArtifactPanel, {
 } from '../components/chat/ArtifactPanel'
 import PersonaPicker from '../components/chat/PersonaPicker'
 import ChatSidebar from '../components/chat/ChatSidebar'
-import { createShareLink } from '../api/extras'
+import { createShareLink, revokeShareLinks } from '../api/extras'
 import MessageBubble from '../components/chat/MessageBubble'
 import MessageInput from '../components/chat/MessageInput'
 import { useChatSocket } from '../hooks/useChatSocket'
@@ -25,12 +25,17 @@ export default function Chat() {
   const [watchlistRefreshKey, setWatchlistRefreshKey] = useState(0)
   const [prefill, setPrefill] = useState('')
   const [artifact, setArtifact] = useState<Artifact | null>(null)
+  const [hasShareLink, setHasShareLink] = useState(false)
   const lastUserMsgRef = useRef('')
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     void loadSessions()
   }, [loadSessions])
+
+  useEffect(() => {
+    setHasShareLink(false) // revoke button is per-conversation
+  }, [activeSessionId])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -91,6 +96,9 @@ export default function Chat() {
         case 'error':
           setThinking(false)
           setStreaming(false)
+          // drop any partial streaming bubble — otherwise the next turn's
+          // tokens append onto this orphaned fragment
+          setMessages((prev) => prev.filter((m) => m.id !== STREAMING_ID))
           toast.error(frame.message)
           break
         default:
@@ -125,9 +133,21 @@ export default function Chat() {
       const token = await createShareLink(activeSessionId)
       const url = `${location.origin}/share/${token}`
       await navigator.clipboard.writeText(url)
+      setHasShareLink(true)
       toast.success('Share link copied to clipboard')
     } catch {
       toast.error('Could not create share link')
+    }
+  }
+
+  const revokeShares = async () => {
+    if (!activeSessionId) return
+    try {
+      await revokeShareLinks(activeSessionId)
+      setHasShareLink(false)
+      toast.success('All share links for this chat revoked')
+    } catch {
+      toast.error('No share links to revoke')
     }
   }
 
@@ -167,6 +187,16 @@ export default function Chat() {
                 title="Copy public share link"
               >
                 <Share2 size={14} />
+              </button>
+            )}
+            {hasShareLink && (
+              <button
+                onClick={() => void revokeShares()}
+                className="text-ink-faint hover:text-danger"
+                aria-label="Revoke share links"
+                title="Revoke all share links for this chat"
+              >
+                <Link2Off size={14} />
               </button>
             )}
             {messages.length > 0 && (

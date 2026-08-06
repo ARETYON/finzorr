@@ -6,7 +6,7 @@ containing user data. Refreshed by `app.nl2sql.jobs.refresh_fundamentals`.
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, Float, String
+from sqlalchemy import BigInteger, DateTime, Float, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -15,6 +15,12 @@ from app.models.user import utcnow
 
 class Fundamental(Base):
     __tablename__ = "fundamentals"
+    __table_args__ = (
+        # the NL2SQL screener's common filter/sort columns
+        Index("ix_fundamentals_pe_ratio", "pe_ratio"),
+        Index("ix_fundamentals_market_cap", "market_cap"),
+        Index("ix_fundamentals_sector", "sector"),
+    )
 
     symbol: Mapped[str] = mapped_column(String(32), primary_key=True)
     name: Mapped[str] = mapped_column(String(200))

@@ -16,6 +16,14 @@ os.environ["DATABASE_URL"] = os.environ.get(
     "postgresql+asyncpg://finzorr:finzorr@localhost:5433/finzorr_test",
 )
 
+# Hard guard: this suite DROPS and TRUNCATES tables. A mistyped
+# TEST_DATABASE_URL pointing at a dev/prod DB must fail fast, not wipe it.
+if not os.environ["DATABASE_URL"].rsplit("/", 1)[-1].endswith("_test"):
+    raise RuntimeError(
+        "refusing to run destructive tests: database name must end with '_test' "
+        f"(got {os.environ['DATABASE_URL'].rsplit('/', 1)[-1]!r})"
+    )
+
 import uuid  # noqa: E402
 from collections.abc import AsyncIterator  # noqa: E402
 
@@ -59,6 +67,8 @@ async def _database() -> AsyncIterator[None]:
     if not _schema_ready:
         await _ensure_database()
         async with engine.begin() as conn:
+            # messages has a gin_trgm_ops index — extension must exist first
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
             await conn.run_sync(Base.metadata.drop_all)
             await conn.run_sync(Base.metadata.create_all)
         _schema_ready = True

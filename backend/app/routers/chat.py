@@ -7,12 +7,14 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
+from app.core.pagination import Page, page_params
 from app.db.session import get_db
 from app.models.chat_session import ChatSession
 from app.models.feedback import Feedback
 from app.models.message import Message
 from app.models.user import User
 from app.schemas.chat import FeedbackIn, MessageOut, SessionOut, SessionRenameIn
+from app.schemas.misc import FeedbackCreateOut, SearchHitOut
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -26,13 +28,14 @@ async def _owned_session(
     return session
 
 
-@router.get("/search")
+@router.get("/search", response_model=list[SearchHitOut])
 async def search_messages(
     q: str,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> list[dict[str, str]]:
-    """Case-insensitive search over the user's own messages (max 30 hits)."""
+    page: Page = Depends(page_params),
+) -> list[SearchHitOut]:
+    """Case-insensitive search over the user's own messages (trgm-indexed)."""
     if not q.strip():
         return []
     result = await db.execute(
@@ -40,28 +43,33 @@ async def search_messages(
         .join(ChatSession, Message.session_id == ChatSession.id)
         .where(ChatSession.user_id == user.id, Message.content.ilike(f"%{q}%"))
         .order_by(Message.created_at.desc())
-        .limit(30)
+        .limit(min(page.limit, 50))
+        .offset(page.offset)
     )
     return [
-        {
-            "session_id": str(m.session_id),
-            "session_title": title or "New chat",
-            "role": m.role,
-            "snippet": m.content[:160],
-            "created_at": m.created_at.isoformat(),
-        }
+        SearchHitOut(
+            session_id=str(m.session_id),
+            session_title=title or "New chat",
+            role=m.role,
+            snippet=m.content[:160],
+            created_at=m.created_at.isoformat(),
+        )
         for m, title in result.all()
     ]
 
 
 @router.get("/sessions", response_model=list[SessionOut])
 async def list_sessions(
-    user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    page: Page = Depends(page_params),
 ) -> list[ChatSession]:
     result = await db.execute(
         select(ChatSession)
         .where(ChatSession.user_id == user.id)
         .order_by(ChatSession.updated_at.desc())
+        .limit(page.limit)
+        .offset(page.offset)
     )
     return list(result.scalars())
 
@@ -107,21 +115,31 @@ async def list_messages(
     session_id: uuid.UUID,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    page: Page = Depends(page_params),
 ) -> list[Message]:
+    """Newest-window semantics: the most recent `limit` messages, ascending."""
     await _owned_session(db, session_id, user)
     result = await db.execute(
-        select(Message).where(Message.session_id == session_id).order_by(Message.created_at)
+        select(Message)
+        .where(Message.session_id == session_id)
+        .order_by(Message.created_at.desc())
+        .limit(page.limit)
+        .offset(page.offset)
     )
-    return list(result.scalars())
+    return list(reversed(list(result.scalars())))
 
 
-@router.post("/messages/{message_id}/feedback", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/messages/{message_id}/feedback",
+    response_model=FeedbackCreateOut,
+    status_code=status.HTTP_201_CREATED,
+)
 async def submit_feedback(
     message_id: uuid.UUID,
     body: FeedbackIn,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> dict[str, str]:
+) -> FeedbackCreateOut:
     message = await db.get(Message, message_id)
     if message is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "message not found")
@@ -150,4 +168,4 @@ async def submit_feedback(
     )
     db.add(row)
     await db.commit()
-    return {"id": str(row.id)}
+    return FeedbackCreateOut(id=str(row.id))

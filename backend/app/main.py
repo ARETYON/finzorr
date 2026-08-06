@@ -4,14 +4,15 @@ Routers are registered here; heavy subsystems (graph, providers) are imported
 lazily inside routers so a missing optional dependency never blocks startup.
 """
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.core.config import settings
-from app.core.logging import configure_logging, log
+from app.core.logging import configure_logging, log, new_correlation_id
 from app.routers import (
     attachments,
     auth,
@@ -78,6 +79,31 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="finzorr.ai API", version="0.1.0", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def request_id_middleware(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """Bind a correlation id per request and surface it as X-Request-ID."""
+    cid = new_correlation_id()
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = cid
+    return response
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Uniform 500 envelope — never leak internals, always give the request id
+    so a user report can be matched to the structured logs."""
+    cid = request.headers.get("X-Request-ID", "") or new_correlation_id()
+    log.error("http.unhandled", path=request.url.path, error=str(exc))
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "internal server error", "request_id": cid},
+        headers={"X-Request-ID": cid},
+    )
+
 
 app.add_middleware(
     CORSMiddleware,

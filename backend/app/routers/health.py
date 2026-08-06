@@ -7,34 +7,33 @@
 from fastapi import APIRouter
 from sqlalchemy import text
 
+from app.schemas.misc import HealthOut, ReadyOut
+
 router = APIRouter(tags=["health"])
 
 
-@router.get("/healthz")
-async def healthz() -> dict[str, str]:
+@router.get("/healthz", response_model=HealthOut)
+async def healthz() -> HealthOut:
     """Liveness: process is up. No dependency checks by design."""
-    return {"status": "ok"}
+    return HealthOut(status="ok")
 
 
-@router.get("/readyz")
-async def readyz() -> dict[str, str]:
+@router.get("/readyz", response_model=ReadyOut)
+async def readyz() -> ReadyOut:
     """Readiness: verify DB and Redis connections; degrade per-dependency."""
     from app.db.session import engine
     from app.services.redis_client import get_redis
 
-    checks: dict[str, str] = {}
     try:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
-        checks["postgres"] = "ok"
+        postgres = "ok"
     except Exception as exc:  # noqa: BLE001 — readiness must report, not raise
-        checks["postgres"] = f"error: {type(exc).__name__}"
+        postgres = f"error: {type(exc).__name__}"
     try:
-        redis = get_redis()
-        await redis.ping()
-        checks["redis"] = "ok"
+        await get_redis().ping()
+        redis = "ok"
     except Exception as exc:  # noqa: BLE001
-        checks["redis"] = f"error: {type(exc).__name__}"
-    all_ok = all(v == "ok" for k, v in checks.items() if k != "status")
-    checks["status"] = "ok" if all_ok else "degraded"
-    return checks
+        redis = f"error: {type(exc).__name__}"
+    ok = postgres == "ok" and redis == "ok"
+    return ReadyOut(status="ok" if ok else "degraded", postgres=postgres, redis=redis)

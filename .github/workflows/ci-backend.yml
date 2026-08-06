@@ -34,9 +34,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
       - name: Lint (ruff)
-        run: uv run ruff check app/ tests/
+        run: uv run ruff check app/ tests/ alembic/
       - name: Typecheck (mypy --strict)
-        run: uv run mypy app/
+        run: uv run mypy app/ tests/
       - name: Env-var parity (.env.example covers every Settings field)
         run: |
           uv run python - <<'EOF'
@@ -47,8 +47,16 @@ jobs:
           print(f"parity OK ({len(Settings.model_fields)} vars)")
           EOF
       - name: Sanity tests (no live deps)
-        run: uv run pytest tests/ -q -m sanity
+        run: uv run pytest tests/ -q -m sanity --cov=app --cov-report=
+      - name: Migrations run clean on a fresh database
+        env:
+          DATABASE_URL: postgresql+psycopg://finzorr:finzorr@localhost:5433/finzorr_test
+        run: |
+          uv run alembic upgrade head
+          uv run alembic check
+          uv run alembic downgrade base
+          uv run alembic upgrade head
       - name: Integration tests (router + ownership, live Postgres)
         env:
           TEST_DATABASE_URL: postgresql+asyncpg://finzorr:finzorr@localhost:5433/finzorr_test
-        run: uv run pytest tests/ -q -m integration
+        run: uv run pytest tests/ -q -m integration --cov=app --cov-append --cov-fail-under=40

@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -12,6 +12,10 @@ from app.models.user import utcnow
 
 class ChatSession(Base):
     __tablename__ = "chat_sessions"
+    __table_args__ = (
+        # the sidebar hot path: WHERE user_id = ? ORDER BY updated_at DESC
+        Index("ix_chat_sessions_user_updated", "user_id", "updated_at"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(

@@ -66,6 +66,12 @@ class Settings(BaseSettings):
     RATE_LIMIT_WINDOW_S: int = 300
     DAILY_TOKEN_BUDGET: int = 2_000_000  # per provider per day; 0 disables
 
+    # --- Sharing ---
+    SHARE_TTL_DAYS: int = 30  # new share links expire after this; 0 = never
+
+    # --- Turn execution ---
+    TURN_TIMEOUT_S: int = 300  # wall-clock ceiling for one assistant turn
+
     # --- Web search ---
     TAVILY_API_KEY: str = ""
     SEARXNG_URL: str = ""

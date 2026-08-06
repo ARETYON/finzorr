@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, status
 
 from app.ai.base import SystemMessage, ToolDefinition, UserMessage
 from app.ai.completion import stream
@@ -65,7 +65,10 @@ async def run_route(route_name: str, q: str) -> dict[str, Any]:
         pass
     node = nodes.get(route_name)
     if node is None:
-        return {"error": f"unknown route '{route_name}'", "available": sorted(nodes)}
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            f"unknown route '{route_name}' — available: {sorted(nodes)}",
+        )
     state: AssistantState = {
         "session_id": "debug",
         "user_id": "debug",

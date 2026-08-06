@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -14,6 +14,17 @@ from app.models.user import utcnow
 
 class Message(Base):
     __tablename__ = "messages"
+    __table_args__ = (
+        # the list_messages hot path: WHERE session_id = ? ORDER BY created_at
+        Index("ix_messages_session_created", "session_id", "created_at"),
+        # trigram index behind /api/chat/search's ILIKE (needs pg_trgm ext)
+        Index(
+            "ix_messages_content_trgm",
+            "content",
+            postgresql_using="gin",
+            postgresql_ops={"content": "gin_trgm_ops"},
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     session_id: Mapped[uuid.UUID] = mapped_column(

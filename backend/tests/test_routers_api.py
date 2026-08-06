@@ -98,12 +98,57 @@ async def test_share_link_is_public_and_readonly(
     session_id = await _create_session(user_client)
     created = await user_client.post(f"/api/chat/sessions/{session_id}/share")
     assert created.status_code == 201, created.text
-    token = created.json()["token"]
+    body = created.json()
+    assert body["expires_at"] is not None  # SHARE_TTL_DAYS default applies
     # unauthenticated read works…
-    shared = await client.get(f"/api/share/{token}")
+    shared = await client.get(f"/api/share/{body['token']}")
     assert shared.status_code == 200
     # …and an unknown token 404s
     assert (await client.get("/api/share/00000000-0000-0000-0000-000000000000")).status_code == 404
+
+
+async def test_expired_share_link_is_dead(
+    user_client: AsyncClient, client: AsyncClient
+) -> None:
+    from datetime import timedelta
+
+    from app.db.session import SessionLocal
+    from app.models.share_token import ShareToken
+    from app.models.user import utcnow
+
+    session_id = await _create_session(user_client)
+    created = await user_client.post(f"/api/chat/sessions/{session_id}/share")
+    token = created.json()["token"]
+    async with SessionLocal() as db:
+        import uuid as _uuid
+
+        row = await db.get(ShareToken, _uuid.UUID(token))
+        assert row is not None
+        row.expires_at = utcnow() - timedelta(days=1)
+        await db.commit()
+    assert (await client.get(f"/api/share/{token}")).status_code == 404
+
+
+async def test_revoke_kills_share_links(
+    user_client: AsyncClient, client: AsyncClient
+) -> None:
+    session_id = await _create_session(user_client)
+    token = (await user_client.post(f"/api/chat/sessions/{session_id}/share")).json()["token"]
+    assert (await client.get(f"/api/share/{token}")).status_code == 200
+    revoked = await user_client.delete(f"/api/chat/sessions/{session_id}/share")
+    assert revoked.status_code == 204
+    assert (await client.get(f"/api/share/{token}")).status_code == 404
+    # revoking again → nothing left → 404
+    assert (await user_client.delete(f"/api/chat/sessions/{session_id}/share")).status_code == 404
+
+
+async def test_pagination_caps_and_windows(user_client: AsyncClient) -> None:
+    session_id = await _create_session(user_client)
+    # limit is clamped by validation
+    assert (await user_client.get("/api/chat/sessions?limit=9999")).status_code == 422
+    assert (await user_client.get("/api/chat/sessions?limit=200")).status_code == 200
+    messages = await user_client.get(f"/api/chat/sessions/{session_id}/messages?limit=1")
+    assert messages.status_code == 200
 
 
 # ----------------------------------------------------------- watchlist
