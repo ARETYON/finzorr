@@ -1,9 +1,16 @@
-"""Session CRUD, message history, and feedback endpoints (all user-scoped)."""
+"""Session CRUD, message history, and feedback endpoints (all user-scoped).
+
+Three routers: `router` (shared, mounted under /api AND /api/v1),
+`legacy_router` (the offset lists, /api only), and `v1_router` (the same
+lists with the cursor envelope, /api/v1 only) — separate routers so the
+two list shapes never shadow each other in routing or OpenAPI.
+"""
 
 import uuid
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
@@ -13,10 +20,34 @@ from app.models.chat_session import ChatSession
 from app.models.feedback import Feedback
 from app.models.message import Message
 from app.models.user import User
-from app.schemas.chat import FeedbackIn, MessageOut, SessionOut, SessionRenameIn
+from app.schemas.chat import (
+    FeedbackIn,
+    MessageOut,
+    MessagePageOut,
+    SessionOut,
+    SessionPageOut,
+    SessionRenameIn,
+)
 from app.schemas.misc import FeedbackCreateOut, PendingApprovalOut, SearchHitOut
 
 router = APIRouter(prefix="/chat", tags=["chat"])
+legacy_router = APIRouter(prefix="/chat", tags=["chat"])
+v1_router = APIRouter(prefix="/chat", tags=["chat"])
+
+
+def _decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
+    """Parse `<isoformat>|<uuid>`; malformed cursors are a client error."""
+    try:
+        ts_raw, _, id_raw = cursor.partition("|")
+        return datetime.fromisoformat(ts_raw), uuid.UUID(id_raw)
+    except ValueError as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid cursor"
+        ) from exc
+
+
+def _encode_cursor(ts: datetime, item_id: uuid.UUID) -> str:
+    return f"{ts.isoformat()}|{item_id}"
 
 
 async def _owned_session(
@@ -58,7 +89,7 @@ async def search_messages(
     ]
 
 
-@router.get("/sessions", response_model=list[SessionOut])
+@legacy_router.get("/sessions", response_model=list[SessionOut])
 async def list_sessions(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -72,6 +103,45 @@ async def list_sessions(
         .offset(page.offset)
     )
     return list(result.scalars())
+
+
+@v1_router.get("/sessions", response_model=SessionPageOut)
+async def list_sessions_v1(
+    cursor: str | None = None,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    page: Page = Depends(page_params),
+) -> SessionPageOut:
+    """Keyset pagination on (updated_at DESC, id DESC).
+
+    NOTE: the sort key is mutable — a session updated between pages moves
+    to the front and can be seen twice (or skipped). Acceptable for a
+    recency-ordered list; documented rather than hidden.
+    """
+    query = (
+        select(ChatSession)
+        .where(ChatSession.user_id == user.id)
+        .order_by(ChatSession.updated_at.desc(), ChatSession.id.desc())
+        .limit(page.limit + 1)  # +1 probes whether another page exists
+    )
+    if cursor is not None:
+        ts, last_id = _decode_cursor(cursor)
+        query = query.where(tuple_(ChatSession.updated_at, ChatSession.id) < (ts, last_id))
+    rows = list((await db.execute(query)).scalars())
+    has_more = len(rows) > page.limit
+    rows = rows[: page.limit]
+    total = (
+        await db.execute(
+            select(func.count())
+            .select_from(ChatSession)
+            .where(ChatSession.user_id == user.id)
+        )
+    ).scalar_one()
+    return SessionPageOut(
+        items=[SessionOut.model_validate(s) for s in rows],
+        next_cursor=_encode_cursor(rows[-1].updated_at, rows[-1].id) if has_more else None,
+        total=total,
+    )
 
 
 @router.post("/sessions", response_model=SessionOut, status_code=status.HTTP_201_CREATED)
@@ -110,7 +180,7 @@ async def delete_session(
     await db.commit()
 
 
-@router.get("/sessions/{session_id}/messages", response_model=list[MessageOut])
+@legacy_router.get("/sessions/{session_id}/messages", response_model=list[MessageOut])
 async def list_messages(
     session_id: uuid.UUID,
     user: User = Depends(get_current_user),
@@ -127,6 +197,44 @@ async def list_messages(
         .offset(page.offset)
     )
     return list(reversed(list(result.scalars())))
+
+
+@v1_router.get("/sessions/{session_id}/messages", response_model=MessagePageOut)
+async def list_messages_v1(
+    session_id: uuid.UUID,
+    cursor: str | None = None,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    page: Page = Depends(page_params),
+) -> MessagePageOut:
+    """Newest window first; `next_cursor` (created_at|id) pages toward OLDER
+    messages — items are returned ascending for direct rendering either way.
+    """
+    await _owned_session(db, session_id, user)
+    query = (
+        select(Message)
+        .where(Message.session_id == session_id)
+        .order_by(Message.created_at.desc(), Message.id.desc())
+        .limit(page.limit + 1)  # +1 probes whether another page exists
+    )
+    if cursor is not None:
+        ts, last_id = _decode_cursor(cursor)
+        query = query.where(tuple_(Message.created_at, Message.id) < (ts, last_id))
+    rows = list((await db.execute(query)).scalars())
+    has_more = len(rows) > page.limit
+    rows = rows[: page.limit]
+    total = (
+        await db.execute(
+            select(func.count())
+            .select_from(Message)
+            .where(Message.session_id == session_id)
+        )
+    ).scalar_one()
+    return MessagePageOut(
+        items=[MessageOut.model_validate(m) for m in reversed(rows)],
+        next_cursor=_encode_cursor(rows[-1].created_at, rows[-1].id) if has_more else None,
+        total=total,
+    )
 
 
 @router.get("/sessions/{session_id}/pending-approval", response_model=PendingApprovalOut)

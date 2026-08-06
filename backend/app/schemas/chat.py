@@ -32,6 +32,26 @@ class MessageOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class SessionPageOut(BaseModel):
+    """v1 cursor envelope for the sessions list (cursor = `updated_at|id`)."""
+
+    items: list[SessionOut]
+    next_cursor: str | None
+    total: int
+
+
+class MessagePageOut(BaseModel):
+    """v1 cursor envelope for a session's messages (cursor = `created_at|id`).
+
+    `items` are ascending (newest window); `next_cursor` pages BACKWARD in
+    time — pass it to fetch the next-older window.
+    """
+
+    items: list[MessageOut]
+    next_cursor: str | None
+    total: int
+
+
 class FeedbackIn(BaseModel):
     rating: int = Field(ge=-1, le=1)
     comment: str | None = Field(default=None, max_length=2000)

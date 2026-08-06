@@ -153,6 +153,11 @@ for _router in _API_ROUTERS:
     app.include_router(_router, prefix="/api/v1")
     app.include_router(_router, prefix="/api")
 
+# The two hot lists diverge by version: v1 returns the cursor envelope
+# {items, next_cursor, total}; the /api alias keeps the bare-list shape.
+app.include_router(chat.v1_router, prefix="/api/v1")
+app.include_router(chat.legacy_router, prefix="/api")
+
 if settings.is_dev:
     from app.routers import debug
 
