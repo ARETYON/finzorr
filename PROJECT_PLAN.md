@@ -903,6 +903,16 @@ Nifty 500 fundamentals universe · cross-user NL2SQL joins (watchlist × fundame
 HF Inference Providers as the paid LLM upgrade if free tiers become limiting · broader
 auth/gateway hardening (WAF, RBAC) if scale warrants.
 
+### Review-driven 9+ frontier (consolidated from all five review rounds)
+
+The items both adversarial reviewers said separate 8.5 from 9/9.5/10 — structural work, not defect closure. This is the list §19.8/§19.9 refer to:
+
+**Agentic (path to 9):** replanning / step-failure detection with early exit (plans are currently fire-and-forget; a failed step becomes prose in compose) · plan-quality evals with an LLM judge (routing eval scores only the first step's route) · regression tests for every shipped fix (five of six agentic fixes and all four envelope fixes are guarded by inspection only). **(9.5):** parallel/DAG step execution via the `Send` API (steps are strictly sequential ≤3) · `BaseStore`-backed long-term memory (currently a bespoke Qdrant path outside the graph's store abstraction). **(10):** node `CachePolicy` / tool-call dedupe within a turn · documented burn-in with real traffic.
+
+**General (path to 9):** cursor pagination with a response envelope (`total`/`next_cursor`) replacing offset · `/api/v1` versioning · stable machine-readable error `code` fields alongside `detail` · E2E tests (Playwright) covering the WS chat path end-to-end · load/soak tests (k6/locust) proving the pool and turn limits under concurrency · `jsx-a11y` enforced in the lint gate (aria attributes are currently hand-typed and unverified) · coverage into the 70s (now 59%) · flake detection (test repetition/order randomization). **(Held for the deploy phase, not scored against:** Dockerfile/CD, dashboards, SLOs, runbook, production burn-in.)
+
+**Known open residuals from the final re-score (small, tracked):** multi-step plans drop intermediate steps' `chart`/`sources` (per-step resets merge only text + citations forward) · citation markers can collide across steps (`[1]` from two steps → two URLs, no renumbering pass) · multi-step token streams accrete into one bubble until the composed response replaces it (no step-boundary stream reset frame) · the resume path's error handling lacks the chat path's partial-persist mirror · `test_hitl_roundtrip`/`test_multistep_plan` are marked `integration` though they stub all live deps · sanity-only coverage is 49%, so the 50% gate depends on the CI integration job running · `PendingApprovalOut.tools` is `list[dict]` rather than a typed model.
+
 ---
 
 ## 21. Open decisions (defaults chosen; confirm during execution)
@@ -993,6 +1003,11 @@ The complete reasoning record for the three post-build improvement waves. Each e
 39. **Streamed partials survive generic errors.** *What:* a mid-turn `Exception` (not just cancel/timeout) persists the streamed partial with an "error — reply incomplete" marker. *Why:* R4 — tokens the user watched arrive vanished from the transcript when the turn died on an unexpected error. *How:* same shielded out-of-band writer, same `turn_id` idempotency.
 40. **Explicit recursion ceiling.** *What:* `recursion_limit=50` on every graph invocation. *Why:* R4 — langgraph 1.x's default is 10007, so it was no backstop; the only real bound was the 300s wall clock. *How:* 50 comfortably fits a 3-step plan with full tool loops; anything deeper is a bug, not a workload.
 41. **The planner's missing end-to-end test.** *What:* `tests/test_multistep_plan.py` drives a scripted two-step plan through the REAL compiled graph — asserting both steps run, step 2's prompt contains step 1's fenced output, per-step resets hold (no duplicated citations), `step/of` routing frames stream, and `compose` produces the final answer. *Why:* R4's sharpest line — "the thing the wave is named for is the least-verified thing in it". *How:* same scripted-LLM pattern as the HITL roundtrip test, so the graph/checkpointer machinery is real while the model is deterministic.
+
+### Post-wave rounds (`20527f5`, `045deb4`)
+
+42. **Pending-approval endpoint modeled.** *What:* `GET …/pending-approval` gained `response_model=PendingApprovalOut` (`schemas/misc.py`). *Why:* self-caught before requesting the re-score — the endpoint had been added returning a raw dict, violating the repo's own "every JSON endpoint modeled" invariant established in Wave 2; handing a reviewer a self-inflicted violation of a documented invariant would have been a free deduction and, worse, dishonest hygiene. *How:* minimal Out-schema; the re-score later noted `tools: list[dict]` honors the letter but not the spirit (a typed `ToolCallOut` remains on the residuals list).
+43. **The 8.5/8.5 re-score, recorded without code changes.** *What:* a fresh dual adversarial pass at `20527f5` scored agentic 8.5 (from 8.3) and general 8.5 (held); §19.9 and §20 record the verdicts, the runtime verifications (the general reviewer mounted a throwing route and proved header-id == body-id == log-id, CORS allowlist-gating, sanitization, and length caps live), the named residuals (listed in §20), and both reviewers' consolidated 9+ frontier. *Why:* the scoreboard is only trustworthy if the misses are written down next to the hits — both reviewers capped at 8.5 explicitly because the fix rounds shipped correct code faster than tests for it, and that critique belongs in the permanent record. *How:* no fixes were rushed in before scoring this time; the residuals are tracked openly in §20 rather than silently patched, so the next work round starts from an honest ledger.
 
 ---
 
