@@ -10,6 +10,7 @@ and delete their memories (also the right-to-erasure path).
 import json
 import re
 import uuid
+from typing import Any
 
 from qdrant_client import models as qmodels
 
@@ -45,6 +46,14 @@ def tenant_for(user_id: str) -> str:
     return f"memfacts:{user_id}"
 
 
+def shape_facts(raw_facts: list[Any]) -> list[str]:
+    """Single-line + length-capped: extracted facts come from arbitrary user
+    text and are later placed in system prompts, so they must stay
+    fact-shaped — never multi-line directive blocks."""
+    facts = [" ".join(str(f).split())[:MAX_FACT_CHARS] for f in raw_facts]
+    return [f for f in facts if f][:MAX_FACTS_PER_TURN]
+
+
 async def extract_and_store(user_id: str, user_msg: str, reply: str) -> int:
     """Fire-and-forget worker: extract facts and upsert them. Returns count."""
     try:
@@ -64,12 +73,7 @@ async def extract_and_store(user_id: str, user_msg: str, reply: str) -> int:
             max_tokens=200,
         )
         match = _JSON_ARRAY.search(raw)
-        facts = json.loads(match.group(0)) if match else []
-        # Single-line + length-capped: extracted facts come from arbitrary user
-        # text and are later placed in system prompts, so they must stay
-        # fact-shaped — never multi-line directive blocks.
-        facts = [" ".join(str(f).split())[:MAX_FACT_CHARS] for f in facts]
-        facts = [f for f in facts if f][:MAX_FACTS_PER_TURN]
+        facts = shape_facts(json.loads(match.group(0)) if match else [])
         if not facts:
             return 0
         vectors = await embed_texts(facts)
