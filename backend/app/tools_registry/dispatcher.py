@@ -101,5 +101,18 @@ async def dispatch(name: str, arguments: dict[str, Any]) -> str:
 
 
 async def dispatch_all(calls: list[tuple[str, dict[str, Any]]]) -> list[str]:
-    """Run several tool calls concurrently (asyncio.gather)."""
-    return list(await asyncio.gather(*(dispatch(name, args) for name, args in calls)))
+    """Run several tool calls concurrently, deduplicating identical calls.
+
+    Models sometimes emit the same (name, args) twice in one batch — run it
+    once and fan the result back to every requester."""
+    import json
+
+    keys = [
+        (name, json.dumps(args, sort_keys=True, default=str)) for name, args in calls
+    ]
+    unique: dict[tuple[str, str], asyncio.Task[str]] = {}
+    async with asyncio.TaskGroup() as group:
+        for (name, args), key in zip(calls, keys, strict=True):
+            if key not in unique:
+                unique[key] = group.create_task(dispatch(name, args))
+    return [unique[key].result() for key in keys]

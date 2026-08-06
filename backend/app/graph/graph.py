@@ -22,8 +22,9 @@ from collections.abc import Awaitable, Callable, Hashable
 from functools import wraps
 from typing import Any, cast
 
+from langgraph.cache.memory import InMemoryCache
 from langgraph.graph import END, START, StateGraph
-from langgraph.types import RetryPolicy
+from langgraph.types import CachePolicy, RetryPolicy
 from sqlalchemy.exc import InterfaceError, OperationalError
 
 from app.core.config import settings
@@ -34,6 +35,7 @@ from app.graph.nodes.compose import compose_node
 from app.graph.nodes.general_chat import general_chat_node
 from app.graph.nodes.memory import memory_node
 from app.graph.nodes.nl2sql import nl2sql_node
+from app.graph.nodes.parallel import join_node, spec_runner_node
 from app.graph.nodes.persist import persist_node
 from app.graph.nodes.rag import rag_node
 from app.graph.nodes.replan import replan_node
@@ -79,6 +81,19 @@ def traced[NodeF: Callable[..., Awaitable[Any]]](name: str, fn: NodeF) -> NodeF:
     return cast(NodeF, wrapper)
 
 
+def _research_search_key(state: dict[str, Any]) -> bytes:
+    """Cache key for research_search: the sub-questions ONLY. The default
+    key pickles the whole node input (turn_id, messages, ...) and would
+    never hit twice. Deliberately cross-user: the node's output is public
+    web results, no user data involved."""
+    import json
+
+    return json.dumps(sorted(state.get("research_subs", [])), sort_keys=True).encode()
+
+
+# Same query re-researched within 5 minutes skips the search fan-out.
+_SEARCH_CACHE = CachePolicy(ttl=300, key_func=_research_search_key)
+
 # Transient DB failures retry once at graph level before persist degrades.
 _PERSIST_RETRY = RetryPolicy(max_attempts=2, retry_on=(OperationalError, InterfaceError))
 
@@ -95,13 +110,19 @@ def build_graph() -> StateGraph[AssistantState]:
     builder.add_node("tools_plan", traced("tools_plan", tools_plan_node))
     builder.add_node("tools_exec", traced("tools_exec", tools_exec_node))
     builder.add_node("research_plan", traced("research_plan", research_plan_node))
-    builder.add_node("research_search", traced("research_search", research_search_node))
+    builder.add_node(
+        "research_search",
+        traced("research_search", research_search_node),
+        cache_policy=_SEARCH_CACHE,
+    )
     builder.add_node("research_read", traced("research_read", research_read_node))
     builder.add_node(
         "research_synthesize", traced("research_synthesize", research_synthesize_node)
     )
     builder.add_node("advance", traced("advance", advance_node))
     builder.add_node("replan", traced("replan", replan_node))
+    builder.add_node("spec_runner", spec_runner_node)  # spans itself per-branch
+    builder.add_node("join", traced("join", join_node))
     builder.add_node("compose", traced("compose", compose_node))
     builder.add_node("persist", traced("persist", persist_node), retry_policy=_PERSIST_RETRY)
     builder.add_edge(START, "supervisor")
@@ -129,6 +150,9 @@ def build_graph() -> StateGraph[AssistantState]:
     builder.add_conditional_edges(
         "replan", after_step, {**BRANCHES, "compose": "compose", "persist": "persist"}
     )
+    # parallel fan-out barrier: all Send branches -> join -> compose
+    builder.add_edge("spec_runner", "join")
+    builder.add_edge("join", "compose")
     builder.add_edge("compose", "persist")
     builder.add_edge("persist", END)
     return builder
@@ -176,7 +200,7 @@ async def get_graph() -> tuple[Any, bool]:
             checkpointer = AsyncPostgresSaver(pool)
             await checkpointer.setup()
             _pool = pool
-            _graph = builder.compile(checkpointer=checkpointer)
+            _graph = builder.compile(checkpointer=checkpointer, cache=InMemoryCache())
             _has_checkpointer = True
             log.info("graph.compiled", checkpointer="postgres-pool", pool_max=_POOL_MAX)
         except Exception as exc:  # noqa: BLE001 — degrade to stateless, retry later
@@ -184,7 +208,7 @@ async def get_graph() -> tuple[Any, bool]:
             if "pool" in locals():
                 with contextlib.suppress(Exception):
                     await pool.close()  # half-open pool must not leak
-            _graph = builder.compile()
+            _graph = builder.compile(cache=InMemoryCache())
             _has_checkpointer = False
             _degraded_retry_at = asyncio.get_running_loop().time() + _DEGRADED_RETRY_S
         return _graph, _has_checkpointer

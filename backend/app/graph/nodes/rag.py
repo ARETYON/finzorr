@@ -81,7 +81,10 @@ async def rag_node(state: AssistantState) -> AssistantState:
         log.warning("node.rag.retrieval_failed", error=str(exc))
 
     async def on_token(t: str) -> None:
-        emit_frame({"type": "token", "delta": t})
+        # inside a Send fan-out, concurrent branch streams would interleave
+        # into one garbled bubble — compose streams the visible answer
+        if not state.get("parallel_branch", False):
+            emit_frame({"type": "token", "delta": t})
 
     if not hits:
         system = SystemMessage(

@@ -52,7 +52,10 @@ async def web_search_node(state: AssistantState) -> AssistantState:
     )
 
     async def on_token(t: str) -> None:
-        emit_frame({"type": "token", "delta": t})
+        # inside a Send fan-out, concurrent branch streams would interleave
+        # into one garbled bubble — compose streams the visible answer
+        if not state.get("parallel_branch", False):
+            emit_frame({"type": "token", "delta": t})
 
     try:
         done = await stream(

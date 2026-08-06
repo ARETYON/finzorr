@@ -44,6 +44,8 @@ async def _eval_web(prompt: str) -> list[str]:
 
 
 async def _eval_research(prompt: str) -> list[str]:
+    from typing import Any
+
     from app.graph.nodes.research import (
         research_plan_node,
         research_read_node,
@@ -52,7 +54,7 @@ async def _eval_research(prompt: str) -> list[str]:
     )
 
     failures: list[str] = []
-    state = {"session_id": "eval", "user_msg": prompt}
+    state: dict[str, Any] = {"session_id": "eval", "user_msg": prompt}
     for node in (
         research_plan_node,
         research_search_node,

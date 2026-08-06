@@ -23,6 +23,8 @@ EXPECTED_NODES = {
     "research_synthesize",
     "advance",  # the plan walker
     "replan",  # one revision attempt on step failure
+    "spec_runner",  # Send fan-out branch runner
+    "join",  # fan-out barrier
     "compose",  # multi-step synthesis
     "persist",
 }

@@ -29,7 +29,10 @@ async def general_chat_node(state: AssistantState) -> AssistantState:
     """Stream a direct answer; degrade to a friendly error on any failure."""
 
     async def on_token(t: str) -> None:
-        emit_frame({"type": "token", "delta": t})
+        # inside a Send fan-out, concurrent branch streams would interleave
+        # into one garbled bubble — compose streams the visible answer
+        if not state.get("parallel_branch", False):
+            emit_frame({"type": "token", "delta": t})
 
     user_name = state.get("user_name", "there")
     system_content = render_agent_prompt("general_chat_system", user_name=user_name)

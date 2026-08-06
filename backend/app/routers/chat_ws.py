@@ -205,15 +205,40 @@ class _Connection:
             raise
 
     async def _run_resume(self, session_id: uuid.UUID, approved: bool) -> None:
+        # Same partial-mirror discipline as _run: an error or cancel mid-
+        # resume must not lose streamed tokens or the parked user message.
+        from app.graph.turn import get_parked_approval
+
+        parked = await get_parked_approval(session_id)
+        parked_msg = str((parked or {}).get("user_msg", "")) or "(approval decision)"
+        partial: list[str] = []
+        turn_id = uuid.uuid4().hex
+
+        async def _send_and_record(frame: dict[str, Any]) -> None:
+            if frame.get("type") == "token":
+                partial.append(str(frame.get("delta", "")))
+            await self.send(frame)
+
         try:
-            response = await resume_turn(session_id, approved, on_frame=self.send)
+            response = await resume_turn(session_id, approved, on_frame=_send_and_record)
             await release_turn(str(session_id))
             await self.send(response)
         except asyncio.CancelledError:
+            await asyncio.shield(
+                _persist_partial(session_id, parked_msg, "".join(partial), turn_id)
+            )
             await asyncio.shield(release_turn(str(session_id)))
             await self.send({"type": "stopped"})
         except Exception as exc:  # noqa: BLE001 — degrade, keep the socket alive
             log.error("ws.resume.error", error=str(exc))
+            if "".join(partial).strip():
+                with contextlib.suppress(Exception):
+                    await record_out_of_band_turn(
+                        session_id,
+                        parked_msg,
+                        "".join(partial) + "\n\n_(error — reply incomplete)_",
+                        turn_id=turn_id,
+                    )
             await release_turn(str(session_id))
             await self.send({"type": "error", "message": "assistant error — please retry"})
         finally:

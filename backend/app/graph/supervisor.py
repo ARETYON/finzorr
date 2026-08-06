@@ -78,14 +78,23 @@ register(
             "Most messages need ONE specialist — return a single step. When the "
             "request genuinely chains two or three (e.g. 'find the latest news on X "
             "and then show its current price' -> web_search then tools), return the "
-            "steps in order (max 3); each step's output is given to the next.\n"
+            "steps in order (max 3); each step's output is given to the next. "
+            "Fully INDEPENDENT steps (none needs another's output) using only "
+            "general_chat/web_search/nl2sql/rag may add parallel true to run "
+            "concurrently.\n"
             'Reply with ONLY JSON: {{"plan": [{{"route": "<specialist>", '
-            '"task": "<what this step must do>"}}, ...], "reason": "<short>"}}'
+            '"task": "<what this step must do>"}}, ...], "parallel": false, '
+            '"reason": "<short>"}}'
         ),
     )
 )
 
 MAX_PLAN_STEPS = 3
+
+# routes safe inside a Send fan-out: single-node, side-effect-free, cannot
+# interrupt() — tools (HITL+loop), research (pipeline), memory (mutations)
+# are excluded by construction
+PARALLELIZABLE: frozenset[str] = frozenset({"general_chat", "web_search", "nl2sql", "rag"})
 
 
 def validate_plan(raw_plan: Any, user_msg: str) -> list[dict[str, str]]:
@@ -208,16 +217,44 @@ async def plan_and_route(state: AssistantState) -> AssistantState:
             "of": len(steps),
         }
     )
+    parallel = (
+        bool(decision.get("parallel", False))
+        and len(steps) > 1
+        and all(s["route"] in PARALLELIZABLE for s in steps)
+    )
     return {
         "route": steps[0]["route"],
         "plan_steps": steps,
         "plan_index": 0,
         "current_task": steps[0]["task"],
+        "plan_parallel": parallel,
         "route_reason": reason,
     }
 
 
-def route_selector(state: AssistantState) -> str:
-    """Conditional-edge selector; defaults to general_chat."""
+def route_selector(state: AssistantState) -> Any:
+    """Conditional-edge selector; a parallel plan fans out via Send.
+
+    Send objects bypass the path_map (verified in the langgraph 1.2 source),
+    so mixing them with the BRANCHES dict is supported; each Send carries
+    FULL state merged with its branch overlay because Send payloads replace,
+    not merge.
+    """
+    if state.get("plan_parallel", False):
+        from langgraph.types import Send
+
+        return [
+            Send(
+                "spec_runner",
+                {
+                    **state,
+                    "route": step["route"],
+                    "current_task": step["task"],
+                    "plan_index": i,
+                    "parallel_branch": True,
+                },
+            )
+            for i, step in enumerate(state.get("plan_steps", []))
+        ]
     route = state.get("route", "")
     return route if route in ROUTES else "general_chat"

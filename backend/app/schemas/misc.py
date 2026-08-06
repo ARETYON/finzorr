@@ -80,6 +80,11 @@ class ReadyOut(BaseModel):
 
 # --- HITL approvals ---
 
+class ApprovalToolOut(BaseModel):
+    name: str
+    arguments: dict[str, object] = {}
+
+
 class PendingApprovalOut(BaseModel):
     pending: bool
-    tools: list[dict[str, object]]
+    tools: list[ApprovalToolOut]

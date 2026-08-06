@@ -10,8 +10,9 @@ import asyncio
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
+from langgraph.types import Overwrite
 from sqlalchemy import select
 
 from app.core.config import settings
@@ -196,6 +197,9 @@ async def run_turn(
         "step_error": False,
         "needs_replan": False,
         "replan_count": 0,
+        "plan_parallel": False,
+        "parallel_branch": False,
+        "parallel_outputs": cast("list[dict[str, Any]]", Overwrite([])),
         "final_text": "",
         "citations": [],
         "tool_calls": [],
@@ -301,8 +305,13 @@ async def resume_turn(
     except TimeoutError:
         return await _timeout_payload(session_id, parked_user_msg, uuid.uuid4().hex)
     except Exception as exc:  # noqa: BLE001
-        log.warning("turn.resume_failed", session_id=str(session_id), error=str(exc))
-        return _error_payload(session_id, "nothing to approve — no parked turn")
+        # a REAL mid-resume failure must not masquerade as "nothing to
+        # approve" — the park was verified above, so this is an execution
+        # error and the user should retry the approval
+        log.error("turn.resume_failed", session_id=str(session_id), error=str(exc))
+        return _error_payload(
+            session_id, "the approval could not be processed — please retry"
+        )
     if payload := _interrupt_payload(session_id, out):
         return payload  # a later step interrupted again
     log.info("turn.resumed", session_id=str(session_id), approved=approved)

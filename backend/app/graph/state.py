@@ -16,6 +16,16 @@ from typing import Annotated, Any, TypedDict
 MESSAGES_CAP = 60  # newest N chat messages kept in the checkpoint
 
 
+def merge_parallel(
+    existing: list[dict[str, Any]] | None, new: list[dict[str, Any]] | None
+) -> list[dict[str, Any]]:
+    """Additive reducer for fan-out branch records. None-tolerant on BOTH
+    sides: langgraph assigns the very first write raw when the channel starts
+    MISSING, so a None must still normalize. turn.py resets via
+    langgraph.types.Overwrite([])."""
+    return [*(existing or []), *(new or [])]
+
+
 def capped_messages(
     existing: list[dict[str, Any]], new: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
@@ -44,6 +54,9 @@ class AssistantState(TypedDict, total=False):
     step_error: bool  # set by a specialist's degradation path (the only failure signal)
     needs_replan: bool
     replan_count: int
+    plan_parallel: bool
+    parallel_branch: bool  # set inside a Send fan-out branch (suppresses token streams)
+    parallel_outputs: Annotated[list[dict[str, Any]], merge_parallel]
 
     # tool-loop working state (per-turn; checkpointed per superstep)
     tool_transcript: list[dict[str, Any]]

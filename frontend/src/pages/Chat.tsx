@@ -14,6 +14,7 @@ import { speak, useSettingsStore } from '../store/settingsStore'
 import type { ServerFrame } from '../types'
 
 const STREAMING_ID = '__streaming__'
+const TRANSIENT_STEP_PREFIX = '__step__'
 
 export default function Chat() {
   const { sessions, activeSessionId, messages, loadSessions, newSession, setMessages } =
@@ -67,6 +68,18 @@ export default function Chat() {
               ? `Step ${frame.step}/${frame.of} — ${frame.route}…`
               : `Routing to ${frame.route}…`,
           )
+          // step boundary: seal the current stream into a transient step
+          // bubble so the next step (or compose) streams separately instead
+          // of accreting into one blob
+          if ((frame.step && frame.step > 1) || frame.route === 'compose' || frame.route === 'replan') {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === STREAMING_ID
+                  ? { ...m, id: `${TRANSIENT_STEP_PREFIX}${prev.length}`, streaming: false }
+                  : m,
+              ),
+            )
+          }
           break
         case 'token':
           setThinking(false)
@@ -93,7 +106,9 @@ export default function Chat() {
           setStreaming(false)
           setRouting(null)
           setMessages((prev) => [
-            ...prev.filter((m) => m.id !== STREAMING_ID),
+            ...prev.filter(
+              (m) => m.id !== STREAMING_ID && !m.id.startsWith(TRANSIENT_STEP_PREFIX),
+            ),
             {
               id: frame.message_id,
               role: 'assistant',
@@ -119,7 +134,9 @@ export default function Chat() {
           setStreaming(false)
           setRouting(null)
           setMessages((prev) =>
-            prev.map((m) => (m.id === STREAMING_ID ? { ...m, id: '', streaming: false } : m)),
+            prev
+              .filter((m) => !m.id.startsWith(TRANSIENT_STEP_PREFIX))
+              .map((m) => (m.id === STREAMING_ID ? { ...m, id: '', streaming: false } : m)),
           )
           break
         case 'error':
@@ -128,7 +145,11 @@ export default function Chat() {
           setRouting(null)
           // drop any partial streaming bubble — otherwise the next turn's
           // tokens append onto this orphaned fragment
-          setMessages((prev) => prev.filter((m) => m.id !== STREAMING_ID))
+          setMessages((prev) =>
+            prev.filter(
+              (m) => m.id !== STREAMING_ID && !m.id.startsWith(TRANSIENT_STEP_PREFIX),
+            ),
+          )
           toast.error(frame.message)
           break
         default:
