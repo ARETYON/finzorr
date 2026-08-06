@@ -19,3 +19,10 @@ export async function fetchMe(): Promise<User> {
 export async function logout(): Promise<void> {
   await api.post('/api/auth/logout')
 }
+
+export async function updateMe(customInstructions: string): Promise<User> {
+  const { data } = await api.patch<User>('/api/auth/me', {
+    custom_instructions: customInstructions,
+  })
+  return data
+}

@@ -17,6 +17,7 @@ from app.db.session import SessionLocal
 from app.graph.graph import get_graph
 from app.graph.state import AssistantState
 from app.models.message import Message
+from app.models.user import User
 
 HISTORY_RELOAD_LIMIT = 24  # degraded-mode (no checkpointer) history window
 
@@ -34,12 +35,19 @@ async def _load_history(session_id: uuid.UUID) -> list[dict[str, Any]]:
     return [{"role": m.role, "content": m.content} for m in reversed(rows)]
 
 
+async def _load_instructions(user_id: uuid.UUID) -> str:
+    async with SessionLocal() as db:
+        user = await db.get(User, user_id)
+        return (user.custom_instructions or "") if user else ""
+
+
 async def run_turn(
     session_id: uuid.UUID, user_id: uuid.UUID, user_name: str, user_msg: str
 ) -> dict[str, Any]:
     """Execute one turn through the graph; returns the WS response payload."""
     cid = new_correlation_id()
     graph, has_checkpointer = await get_graph()
+    user_instructions = await _load_instructions(user_id)
     turn_input: AssistantState = {
         "session_id": str(session_id),
         "user_id": str(user_id),
@@ -57,6 +65,8 @@ async def run_turn(
         "data_as_of": "",
         "sources": [],
         "message_id": "",
+        "chart": {},
+        "user_instructions": user_instructions,
     }
     if not has_checkpointer:
         turn_input["messages"] = await _load_history(session_id)
@@ -74,5 +84,6 @@ async def run_turn(
         "actions": out.get("actions", []),
         "data_as_of": out.get("data_as_of") or datetime.now(UTC).isoformat(),
         "sources": out.get("sources", []),
+        "chart": out.get("chart") or None,
         "session_id": str(session_id),
     }

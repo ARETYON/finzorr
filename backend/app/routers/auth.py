@@ -10,7 +10,7 @@ from app.core.config import settings
 from app.core.logging import log
 from app.db.session import get_db
 from app.models.user import User
-from app.schemas.auth import GoogleLoginIn, UserOut
+from app.schemas.auth import GoogleLoginIn, UserOut, UserUpdateIn
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -62,6 +62,20 @@ async def logout(response: Response) -> dict[str, bool]:
     """Clear the session cookie."""
     response.delete_cookie(SESSION_COOKIE, domain=settings.COOKIE_DOMAIN or None)
     return {"ok": True}
+
+
+@router.patch("/me", response_model=UserOut)
+async def update_me(
+    body: UserUpdateIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """Update per-user preferences (custom instructions)."""
+    merged = await db.merge(user)
+    merged.custom_instructions = (body.custom_instructions or "").strip()[:2000] or None
+    await db.commit()
+    await db.refresh(merged)
+    return merged
 
 
 @router.get("/me", response_model=UserOut)

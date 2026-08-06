@@ -10,7 +10,11 @@ from app.auth.dependencies import get_current_user
 from app.core.config import settings
 from app.core.logging import log
 from app.db.session import get_db
-from app.documents.ingest import DocumentTooLargeError, ingest_pdf
+from app.documents.ingest import (
+    DocumentTooLargeError,
+    UnsupportedDocumentError,
+    ingest_document,
+)
 from app.documents.storage import get_storage
 from app.models.document import Document
 from app.models.user import User
@@ -18,7 +22,19 @@ from app.rag.vector_store import delete_document as qdrant_delete_document
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
-_PDF_MAGIC = b"%PDF-"
+_ALLOWED_EXTENSIONS = (".pdf", ".docx", ".csv", ".txt", ".md")
+_MAGIC = {".pdf": b"%PDF-", ".docx": b"PK"}
+
+
+def _validate_type(filename: str, data: bytes) -> str | None:
+    """Return an error message, or None when the file looks legitimate."""
+    lower = filename.lower()
+    if not lower.endswith(_ALLOWED_EXTENSIONS):
+        return "supported types: PDF, DOCX, CSV, TXT, MD"
+    for ext, magic in _MAGIC.items():
+        if lower.endswith(ext) and not data.startswith(magic):
+            return f"file does not look like a valid {ext[1:].upper()}"
+    return None
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -38,24 +54,25 @@ async def upload_document(
     data = await file.read()
     if len(data) > settings.MAX_UPLOAD_MB * 1024 * 1024:
         raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "file exceeds size limit")
-    if not data.startswith(_PDF_MAGIC):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "only PDF files are supported")
+    type_error = _validate_type(file.filename or "", data)
+    if type_error:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, type_error)
 
     doc = Document(
         user_id=user.id,
-        filename=file.filename or "document.pdf",
+        filename=file.filename or "document",
         storage_key="",
         status="pending",
     )
     db.add(doc)
     await db.flush()
-    doc.storage_key = f"{user.id}/{doc.id}.pdf"
+    doc.storage_key = f"{user.id}/{doc.id}-{doc.filename}"
     await get_storage().save(doc.storage_key, data)
     try:
-        chunk_count = await ingest_pdf(user.id, doc.id, doc.filename, data)
+        chunk_count = await ingest_document(user.id, doc.id, doc.filename, data)
         doc.status = "ready"
         doc.chunk_count = chunk_count
-    except DocumentTooLargeError as exc:
+    except (DocumentTooLargeError, UnsupportedDocumentError) as exc:
         await db.rollback()
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     except Exception as exc:  # noqa: BLE001 — record failure, keep the row

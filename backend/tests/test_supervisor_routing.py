@@ -30,6 +30,9 @@ pytestmark = pytest.mark.sanity
         ("what is P/E ratio", "rag"),
         ("explain circuit limits", "rag"),
         ("what does my contract say about notice period", "rag"),
+        # URL pasted -> tools (read_url)
+        ("summarize https://example.com/article", "tools"),
+        ("what does this say http://news.site/x", "tools"),
         # default
         ("write me a poem about the sea", "general_chat"),
         ("hello!", "general_chat"),

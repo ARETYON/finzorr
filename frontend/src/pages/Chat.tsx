@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Download } from 'lucide-react'
 import toast from 'react-hot-toast'
 import ChatSidebar from '../components/chat/ChatSidebar'
 import MessageBubble from '../components/chat/MessageBubble'
 import MessageInput from '../components/chat/MessageInput'
 import { useChatSocket } from '../hooks/useChatSocket'
 import { useChatStore } from '../store/chatStore'
+import { speak, useSettingsStore } from '../store/settingsStore'
 import type { ServerFrame } from '../types'
 
 const STREAMING_ID = '__streaming__'
@@ -15,6 +17,8 @@ export default function Chat() {
   const [streaming, setStreaming] = useState(false)
   const [thinking, setThinking] = useState(false)
   const [watchlistRefreshKey, setWatchlistRefreshKey] = useState(0)
+  const [prefill, setPrefill] = useState('')
+  const lastUserMsgRef = useRef('')
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -59,10 +63,12 @@ export default function Chat() {
               tool_calls: frame.tool_calls,
               data_as_of: frame.data_as_of,
               sources: frame.sources,
+              chart: frame.chart,
             },
           ])
           void useChatStore.getState().loadSessions() // pick up auto-titles
           setWatchlistRefreshKey((k) => k + 1) // reflect chat-driven watchlist edits
+          if (useSettingsStore.getState().autoRead) speak(frame.message)
           break
         case 'stopped':
           setThinking(false)
@@ -88,8 +94,30 @@ export default function Chat() {
   const handleSend = async (text: string) => {
     let sessionId = activeSessionId
     if (!sessionId) sessionId = await newSession()
+    lastUserMsgRef.current = text
     setMessages((prev) => [...prev, { id: `local-${Date.now()}`, role: 'user', content: text }])
     sendChat(sessionId, text)
+  }
+
+  const handleRegenerate = () => {
+    const last =
+      lastUserMsgRef.current ||
+      [...messages].reverse().find((m) => m.role === 'user')?.content ||
+      ''
+    if (last && activeSessionId) void handleSend(last)
+  }
+
+  const exportChat = () => {
+    const title = sessions.find((s) => s.id === activeSessionId)?.title ?? 'finzorr-chat'
+    const md = messages
+      .map((m) => `**${m.role === 'user' ? 'You' : 'finzorr'}:**\n\n${m.content}`)
+      .join('\n\n---\n\n')
+    const blob = new Blob([`# ${title}\n\n${md}\n`], { type: 'text/markdown' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `${title.replace(/[^a-z0-9-_ ]/gi, '').trim() || 'chat'}.md`
+    a.click()
+    URL.revokeObjectURL(a.href)
   }
 
   const activeTitle = sessions.find((s) => s.id === activeSessionId)?.title ?? 'finzorr.ai'
@@ -106,6 +134,16 @@ export default function Chat() {
             <span className="fui-label">dossier · active thread</span>
           </div>
           <div className="flex items-center gap-3">
+            {messages.length > 0 && (
+              <button
+                onClick={exportChat}
+                className="text-ink-faint hover:text-ink-mid"
+                aria-label="Export conversation"
+                title="Export as Markdown"
+              >
+                <Download size={14} />
+              </button>
+            )}
             <span className="fui-only fui-mono items-center gap-2 text-[10px] tracking-[0.2em] text-ink-faint">
               LINK 01 · {connected ? 'SECURE' : 'RELINK'}
             </span>
@@ -122,9 +160,20 @@ export default function Chat() {
                 Ask about a stock, screen the market, or just chat.
               </div>
             )}
-            {messages.map((m, i) => (
-              <MessageBubble key={m.id || i} message={m} />
-            ))}
+            {messages.map((m, i) => {
+              const isLastAssistant =
+                m.role === 'assistant' && i === messages.length - 1 && !m.streaming
+              const isLastUser =
+                m.role === 'user' && !messages.slice(i + 1).some((x) => x.role === 'user')
+              return (
+                <MessageBubble
+                  key={m.id || i}
+                  message={m}
+                  onRegenerate={isLastAssistant ? handleRegenerate : undefined}
+                  onEdit={isLastUser ? (content) => setPrefill(content) : undefined}
+                />
+              )
+            })}
             {thinking && (
               <div className="flex justify-start">
                 <div className="msg-assistant clip-panel animate-pulse rounded-2xl border border-line bg-panel px-4 py-2.5 text-sm text-ink-faint">
@@ -140,6 +189,8 @@ export default function Chat() {
           streaming={streaming || thinking}
           onSend={(t) => void handleSend(t)}
           onCancel={cancel}
+          prefill={prefill}
+          onPrefillConsumed={() => setPrefill('')}
         />
       </main>
     </div>

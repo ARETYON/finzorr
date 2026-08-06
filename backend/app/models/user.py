@@ -21,5 +21,6 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(200))
     picture_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    custom_instructions: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     last_login_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

@@ -21,7 +21,10 @@ from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
 from app.graph.callbacks import emit
 from app.graph.nodes.general_chat import build_history
 from app.graph.state import AssistantState
-from app.tools_registry import market_tools  # noqa: F401 — registers the family
+from app.tools_registry import (
+    market_tools,  # noqa: F401 — registers the family
+    web_tools,  # noqa: F401 — registers read_url
+)
 from app.tools_registry.dispatcher import all_tools, dispatch_all
 
 MAX_ITERATIONS = 6
@@ -45,6 +48,30 @@ register(
 )
 
 
+async def _chart_for(tool_call_log: list[dict[str, Any]]) -> dict[str, Any]:
+    """If history was fetched this turn, attach the full series (cache hit) so
+    the frontend can render an inline price chart."""
+    for tc in tool_call_log:
+        if tc.get("name") == "get_historical_prices":
+            symbol = str(tc.get("arguments", {}).get("symbol", "")).upper()
+            period = str(tc.get("arguments", {}).get("period", "6mo"))
+            if not symbol:
+                continue
+            try:
+                from app.market_data.cache import HISTORY_TTL_S, cached_json
+                from app.tools_registry.market_tools import _history_list
+
+                points = await cached_json(
+                    f"hist:{symbol}:{period}",
+                    HISTORY_TTL_S,
+                    lambda s=symbol, p=period: _history_list(s, p),
+                )
+                return {"symbol": symbol, "period": period, "points": points}
+            except Exception:  # noqa: BLE001 — chart is decorative, never fatal
+                return {}
+    return {}
+
+
 async def tools_node(state: AssistantState) -> AssistantState:
     """Run the tool-calling loop; degrade to a friendly error on failure."""
     session_id = state["session_id"]
@@ -52,10 +79,11 @@ async def tools_node(state: AssistantState) -> AssistantState:
     async def on_token(t: str) -> None:
         await emit(session_id, {"type": "token", "delta": t})
 
+    system_content = render_agent_prompt("tools_system", user_name=state.get("user_name", "there"))
+    if instructions := state.get("user_instructions", ""):
+        system_content += f"\n- The user's standing preferences (always obey): {instructions}"
     msgs: list[ChatMessage] = [
-        SystemMessage(
-            content=render_agent_prompt("tools_system", user_name=state.get("user_name", "there"))
-        ),
+        SystemMessage(content=system_content),
         *build_history(state.get("messages", [])),
         UserMessage(content=state["user_msg"]),
     ]
@@ -72,6 +100,7 @@ async def tools_node(state: AssistantState) -> AssistantState:
                     "tool_calls": tool_call_log,
                     "data_as_of": datetime.now(UTC).isoformat(),
                     "sources": ["Yahoo Finance"] if tool_call_log else [],
+                    "chart": await _chart_for(tool_call_log),
                 }
             for tc in done.tool_calls:
                 await emit(

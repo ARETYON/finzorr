@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import { Check, LogOut, MessageSquare, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { Check, LogOut, MessageSquare, Pencil, Plus, Settings, Trash2, X } from 'lucide-react'
 import clsx from 'clsx'
 import { useNavigate } from 'react-router-dom'
+import SettingsModal from '../SettingsModal'
 import ThemeToggle from '../ThemeToggle'
 import { useAuthStore } from '../../store/authStore'
 import { useChatStore } from '../../store/chatStore'
 import FileUpload from './FileUpload'
+import SearchBox from './SearchBox'
 import WatchlistPanel from './WatchlistPanel'
 
 export default function ChatSidebar({ watchlistRefreshKey }: { watchlistRefreshKey: number }) {
@@ -14,6 +16,7 @@ export default function ChatSidebar({ watchlistRefreshKey }: { watchlistRefreshK
   const navigate = useNavigate()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editTitle, setEditTitle] = useState('')
+  const [showSettings, setShowSettings] = useState(false)
 
   const startEdit = (id: string, title: string | null) => {
     setEditingId(id)
@@ -43,6 +46,7 @@ export default function ChatSidebar({ watchlistRefreshKey }: { watchlistRefreshK
           <Plus size={16} /> New chat
         </button>
       </div>
+      <SearchBox />
       <div className="fui-label px-3 pb-1">session log</div>
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-2">
         {sessions.map((s) => (
@@ -106,6 +110,13 @@ export default function ChatSidebar({ watchlistRefreshKey }: { watchlistRefreshK
         <div className="flex items-center justify-between gap-2 text-xs text-ink-dim">
           <span className="truncate">{user?.name}</span>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowSettings(true)}
+              className="text-ink-faint hover:text-ink-mid"
+              aria-label="Settings"
+            >
+              <Settings size={14} />
+            </button>
             <ThemeToggle compact />
             <button
               onClick={() => void handleLogout()}
@@ -117,6 +128,7 @@ export default function ChatSidebar({ watchlistRefreshKey }: { watchlistRefreshK
           </div>
         </div>
       </div>
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
     </aside>
   )
 }

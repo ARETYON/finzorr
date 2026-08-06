@@ -30,8 +30,9 @@ export default function FileUpload() {
 
   const onPick = async (file: File | undefined) => {
     if (!file) return
-    if (!file.name.toLowerCase().endsWith('.pdf')) {
-      toast.error('Only PDF files are supported')
+    const allowed = ['.pdf', '.docx', '.csv', '.txt', '.md']
+    if (!allowed.some((ext) => file.name.toLowerCase().endsWith(ext))) {
+      toast.error('Supported types: PDF, DOCX, CSV, TXT, MD')
       return
     }
     setBusy(true)
@@ -69,21 +70,21 @@ export default function FileUpload() {
           onClick={() => inputRef.current?.click()}
           disabled={busy}
           className="text-ink-faint hover:text-accent-strong disabled:opacity-50"
-          aria-label="Upload PDF"
+          aria-label="Upload document"
         >
           {busy ? <Loader2 size={14} className="animate-spin" /> : <Paperclip size={14} />}
         </button>
         <input
           ref={inputRef}
           type="file"
-          accept="application/pdf"
+          accept=".pdf,.docx,.csv,.txt,.md"
           className="hidden"
           onChange={(e) => void onPick(e.target.files?.[0])}
         />
       </div>
       <ul className="space-y-1">
         {docs.length === 0 && (
-          <li className="text-[11px] text-ink-faint">Upload a PDF, then ask about it in chat.</li>
+          <li className="text-[11px] text-ink-faint">Upload a PDF/DOCX/CSV, then ask about it.</li>
         )}
         {docs.map((d) => (
           <li key={d.id} className="group flex items-center gap-1.5 text-[11px] text-ink-mid">

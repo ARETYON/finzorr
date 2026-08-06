@@ -59,7 +59,8 @@ register(
             "- web_search: fresh news / current events / anything needing today's info\n"
             "- nl2sql: screening/filtering MANY stocks by metrics (P/E, yield, "
             "market cap...)\n"
-            "- tools: live price/quote/fundamentals/history of SPECIFIC stocks\n\n"
+            "- tools: live price/quote/fundamentals/history of SPECIFIC stocks, or "
+            "reading/summarizing a URL the user pasted\n\n"
             'Reply with ONLY JSON: {{"route": "<one of the six>", '
             '"plan": ["<step>", ...], "reason": "<short>"}}'
         ),
@@ -67,8 +68,13 @@ register(
 )
 
 
+_URL_HINT = re.compile(r"https?://\S+", re.IGNORECASE)
+
+
 def keyword_route(message: str) -> str:
     """Deterministic fallback router (works with the LLM fully down)."""
+    if _URL_HINT.search(message):
+        return "tools"
     if _MEMORY_HINTS.search(message):
         return "memory"
     if _SQL_HINTS.search(message):

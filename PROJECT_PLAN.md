@@ -725,14 +725,14 @@ the Word doc regenerated.
 ### Wave 1 — quick wins (free)
 | # | Feature | Status | Design note |
 |---|---|---|---|
-| 1 | Stock charts in chat | WAVE-1 | history series → `chart` field on WS response; recharts line chart in the bubble |
-| 2 | Voice input (dictate) | WAVE-1 | browser SpeechRecognition mic button; hidden if unsupported |
-| 3 | Voice output (read aloud) | WAVE-1 | speechSynthesis speaker button + auto-read toggle |
-| 4 | Regenerate + edit last message | WAVE-1 | client resends prior user msg; pencil prefills input |
-| 5 | Read-a-URL tool | WAVE-1 | httpx+bs4 extraction, untrusted-content wrapping, tools route |
-| 6 | DOCX/CSV/TXT uploads | WAVE-1 | python-docx / plain decode into the same chunk→embed pipeline |
-| 7 | Chat history search + export | WAVE-1 | ILIKE search endpoint + sidebar box; Markdown download |
-| 8 | Custom instructions | WAVE-1 | users.custom_instructions column, settings modal, prompt injection |
+| 1 | Stock charts in chat | LIVE | history series → `chart` field on WS response; recharts line chart in the bubble |
+| 2 | Voice input (dictate) | LIVE | browser SpeechRecognition mic button; hidden if unsupported |
+| 3 | Voice output (read aloud) | LIVE | speechSynthesis speaker button + auto-read toggle |
+| 4 | Regenerate + edit last message | LIVE | client resends prior user msg; pencil prefills input |
+| 5 | Read-a-URL tool | LIVE | httpx+bs4 extraction, untrusted-content wrapping, tools route |
+| 6 | DOCX/CSV/TXT uploads | LIVE | python-docx / plain decode into the same chunk→embed pipeline |
+| 7 | Chat history search + export | LIVE | ILIKE search endpoint + sidebar box; Markdown download |
+| 8 | Custom instructions | LIVE | users.custom_instructions column, settings modal, prompt injection |
 
 ### Wave 2 — medium (free)
 | # | Feature | Status | Design note |

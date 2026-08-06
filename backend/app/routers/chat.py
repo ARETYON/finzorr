@@ -26,6 +26,34 @@ async def _owned_session(
     return session
 
 
+@router.get("/search")
+async def search_messages(
+    q: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict[str, str]]:
+    """Case-insensitive search over the user's own messages (max 30 hits)."""
+    if not q.strip():
+        return []
+    result = await db.execute(
+        select(Message, ChatSession.title)
+        .join(ChatSession, Message.session_id == ChatSession.id)
+        .where(ChatSession.user_id == user.id, Message.content.ilike(f"%{q}%"))
+        .order_by(Message.created_at.desc())
+        .limit(30)
+    )
+    return [
+        {
+            "session_id": str(m.session_id),
+            "session_title": title or "New chat",
+            "role": m.role,
+            "snippet": m.content[:160],
+            "created_at": m.created_at.isoformat(),
+        }
+        for m, title in result.all()
+    ]
+
+
 @router.get("/sessions", response_model=list[SessionOut])
 async def list_sessions(
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)

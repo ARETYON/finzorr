@@ -5,6 +5,7 @@ export interface User {
   email: string
   name: string
   picture_url: string | null
+  custom_instructions?: string | null
 }
 
 export interface ChatSession {
@@ -27,6 +28,29 @@ export interface ToolCallInfo {
   result?: string
 }
 
+export interface PricePoint {
+  date: string
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+}
+
+export interface ChartData {
+  symbol: string
+  period: string
+  points: PricePoint[]
+}
+
+export interface SearchHit {
+  session_id: string
+  session_title: string
+  role: string
+  snippet: string
+  created_at: string
+}
+
 export interface ChatMessage {
   id: string
   role: 'user' | 'assistant'
@@ -39,6 +63,7 @@ export interface ChatMessage {
   feedback?: 1 | -1
   data_as_of?: string
   sources?: string[]
+  chart?: ChartData | null
 }
 
 // WebSocket frames (server -> client)
@@ -58,6 +83,7 @@ export type ServerFrame =
       actions: unknown[]
       data_as_of: string
       sources: string[]
+      chart: ChartData | null
       session_id: string
     }
   | { type: 'stopped' }

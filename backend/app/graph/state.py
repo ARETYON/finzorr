@@ -28,6 +28,10 @@ class AssistantState(TypedDict, total=False):
     actions: list[dict[str, Any]]
     data_as_of: str
     sources: list[str]
+    chart: dict[str, Any]  # {symbol, period, points[]} when a price chart applies
+
+    # per-user preferences loaded at turn start
+    user_instructions: str
 
     # persist output
     message_id: str

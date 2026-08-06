@@ -1,15 +1,59 @@
-import { useState, type KeyboardEvent } from 'react'
-import { Send, Square } from 'lucide-react'
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { Mic, MicOff, Send, Square } from 'lucide-react'
+import clsx from 'clsx'
+import toast from 'react-hot-toast'
 
 interface Props {
   disabled: boolean
   streaming: boolean
   onSend: (text: string) => void
   onCancel: () => void
+  prefill?: string
+  onPrefillConsumed?: () => void
 }
 
-export default function MessageInput({ disabled, streaming, onSend, onCancel }: Props) {
+type SpeechRecognitionLike = {
+  lang: string
+  interimResults: boolean
+  continuous: boolean
+  onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null
+  onend: (() => void) | null
+  onerror: (() => void) | null
+  start: () => void
+  stop: () => void
+}
+
+function getRecognition(): SpeechRecognitionLike | null {
+  const w = window as unknown as {
+    SpeechRecognition?: new () => SpeechRecognitionLike
+    webkitSpeechRecognition?: new () => SpeechRecognitionLike
+  }
+  const Ctor = w.SpeechRecognition ?? w.webkitSpeechRecognition
+  return Ctor ? new Ctor() : null
+}
+
+const SPEECH_SUPPORTED =
+  typeof window !== 'undefined' &&
+  ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)
+
+export default function MessageInput({
+  disabled,
+  streaming,
+  onSend,
+  onCancel,
+  prefill,
+  onPrefillConsumed,
+}: Props) {
   const [text, setText] = useState('')
+  const [listening, setListening] = useState(false)
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
+
+  useEffect(() => {
+    if (prefill) {
+      setText(prefill)
+      onPrefillConsumed?.()
+    }
+  }, [prefill, onPrefillConsumed])
 
   const submit = () => {
     const trimmed = text.trim()
@@ -25,6 +69,33 @@ export default function MessageInput({ disabled, streaming, onSend, onCancel }: 
     }
   }
 
+  const toggleMic = () => {
+    if (listening) {
+      recognitionRef.current?.stop()
+      setListening(false)
+      return
+    }
+    const recognition = getRecognition()
+    if (!recognition) {
+      toast.error('Voice input is not supported in this browser')
+      return
+    }
+    recognition.lang = 'en-IN'
+    recognition.interimResults = true
+    recognition.continuous = false
+    recognition.onresult = (event) => {
+      const transcript = Array.from({ length: event.results.length }, (_, i) =>
+        event.results[i][0].transcript,
+      ).join('')
+      setText(transcript)
+    }
+    recognition.onend = () => setListening(false)
+    recognition.onerror = () => setListening(false)
+    recognitionRef.current = recognition
+    recognition.start()
+    setListening(true)
+  }
+
   return (
     <div className="border-t border-line bg-panel p-3">
       <div className="mx-auto flex max-w-3xl items-end gap-2">
@@ -34,9 +105,25 @@ export default function MessageInput({ disabled, streaming, onSend, onCancel }: 
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}
           rows={1}
-          placeholder="Ask anything — stocks, your documents, or general questions…"
+          placeholder={
+            listening ? 'Listening…' : 'Ask anything — stocks, your documents, or general questions…'
+          }
           className="clip-panel max-h-40 flex-1 resize-none rounded-xl border border-line-strong bg-panel px-4 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:border-accent-strong focus:outline-none"
         />
+        {SPEECH_SUPPORTED && (
+          <button
+            onClick={toggleMic}
+            className={clsx(
+              'clip-btn rounded-xl p-2.5',
+              listening
+                ? 'animate-pulse bg-danger/20 text-danger'
+                : 'bg-chip text-ink-mid hover:bg-line',
+            )}
+            aria-label={listening ? 'Stop dictating' : 'Dictate'}
+          >
+            {listening ? <MicOff size={18} /> : <Mic size={18} />}
+          </button>
+        )}
         {streaming ? (
           <button
             onClick={onCancel}

@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { ChatMessage, ChatSession } from '../types'
+import type { ChatMessage, ChatSession, SearchHit } from '../types'
 
 export async function listSessions(): Promise<ChatSession[]> {
   const { data } = await api.get<ChatSession[]>('/api/chat/sessions')
@@ -31,4 +31,9 @@ export async function sendFeedback(
   comment?: string,
 ): Promise<void> {
   await api.post(`/api/chat/messages/${messageId}/feedback`, { rating, comment })
+}
+
+export async function searchMessages(q: string): Promise<SearchHit[]> {
+  const { data } = await api.get<SearchHit[]>('/api/chat/search', { params: { q } })
+  return data
 }

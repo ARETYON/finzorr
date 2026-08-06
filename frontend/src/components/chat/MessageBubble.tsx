@@ -1,14 +1,22 @@
-import { ThumbsDown, ThumbsUp } from 'lucide-react'
+import { Pencil, RefreshCw, ThumbsDown, ThumbsUp, Volume2 } from 'lucide-react'
 import clsx from 'clsx'
 import ReactMarkdown from 'react-markdown'
 import toast from 'react-hot-toast'
 import { sendFeedback } from '../../api/chat'
 import { useChatStore } from '../../store/chatStore'
+import { speak } from '../../store/settingsStore'
 import type { ChatMessage } from '../../types'
 import Citations from './Citations'
+import PriceChart from './PriceChart'
 import RouteBadge from './RouteBadge'
 
-export default function MessageBubble({ message }: { message: ChatMessage }) {
+interface Props {
+  message: ChatMessage
+  onRegenerate?: () => void
+  onEdit?: (content: string) => void
+}
+
+export default function MessageBubble({ message, onRegenerate, onEdit }: Props) {
   const setMessages = useChatStore((s) => s.setMessages)
   const isUser = message.role === 'user'
 
@@ -22,7 +30,7 @@ export default function MessageBubble({ message }: { message: ChatMessage }) {
   }
 
   return (
-    <div className={clsx('flex', isUser ? 'justify-end' : 'justify-start')}>
+    <div className={clsx('group/msg flex', isUser ? 'justify-end' : 'justify-start')}>
       <div
         className={clsx(
           'max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed',
@@ -37,16 +45,28 @@ export default function MessageBubble({ message }: { message: ChatMessage }) {
           </div>
         )}
         {isUser ? (
-          <p className="whitespace-pre-wrap">{message.content}</p>
+          <div className="flex items-start gap-2">
+            <p className="whitespace-pre-wrap">{message.content}</p>
+            {onEdit && (
+              <button
+                onClick={() => onEdit(message.content)}
+                className="mt-0.5 shrink-0 opacity-0 transition-opacity group-hover/msg:opacity-70 hover:!opacity-100"
+                aria-label="Edit and resend"
+              >
+                <Pencil size={12} />
+              </button>
+            )}
+          </div>
         ) : (
           <div className="prose prose-sm prose-slate max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
             <ReactMarkdown>{message.content || '…'}</ReactMarkdown>
             {message.streaming && <span className="stream-cursor">▊</span>}
           </div>
         )}
+        {!isUser && message.chart && <PriceChart chart={message.chart} />}
         {!isUser && message.citations && <Citations citations={message.citations} />}
         {!isUser && !message.streaming && message.id && (
-          <div className="mt-2 flex items-center gap-2 text-ink-faint">
+          <div className="mt-2 flex items-center gap-2.5 text-ink-faint">
             <button
               onClick={() => rate(1)}
               disabled={message.feedback !== undefined}
@@ -63,6 +83,22 @@ export default function MessageBubble({ message }: { message: ChatMessage }) {
             >
               <ThumbsDown size={13} />
             </button>
+            <button
+              onClick={() => speak(message.content)}
+              className="hover:text-accent-strong"
+              aria-label="Read aloud"
+            >
+              <Volume2 size={13} />
+            </button>
+            {onRegenerate && (
+              <button
+                onClick={onRegenerate}
+                className="hover:text-accent-strong"
+                aria-label="Regenerate response"
+              >
+                <RefreshCw size={13} />
+              </button>
+            )}
           </div>
         )}
       </div>
