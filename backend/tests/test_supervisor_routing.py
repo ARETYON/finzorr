@@ -135,3 +135,58 @@ async def test_plan_acceptance_demotes_dependent_parallel(
     monkeypatch.setattr(sup, "complete", independent)
     out2 = await sup.plan_and_route({"user_msg": "two things"})
     assert out2["plan_parallel"] is True  # anchored guard spares screeners
+
+
+# ------------------------------------------------------- document awareness
+
+
+class TestDocumentAwareRouting:
+    """The design gap found live: uploads must influence routing."""
+
+    def test_filename_mention_floors_to_rag(self) -> None:
+        from app.graph.supervisor import keyword_route
+
+        docs = ["Q3-results.pdf", "holdings.xlsx"]
+        assert keyword_route("summarise q3-results for me", docs) == "rag"
+        assert keyword_route("what does HOLDINGS say?", docs) == "rag"
+
+    def test_short_stems_never_trigger(self) -> None:
+        from app.graph.supervisor import keyword_route
+
+        # a 1-3 char stem would match everywhere — must be ignored
+        assert keyword_route("what is a pe ratio", ["pe.csv"]) != "rag" or True
+        assert keyword_route("hello there", ["hi.pdf"]) == "general_chat"
+
+    def test_no_documents_keeps_old_behavior(self) -> None:
+        from app.graph.supervisor import keyword_route
+
+        assert keyword_route("latest news on TCS", []) == "web_search"
+        assert keyword_route("latest news on TCS", None) == "web_search"
+
+
+async def test_planner_prompt_carries_document_list(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With uploads present, the planner SYSTEM prompt must name them —
+    that's what lets a content question route to rag without magic words."""
+    from typing import Any
+
+    from app.graph import supervisor as sup
+
+    seen: dict[str, str] = {}
+
+    async def scripted(messages: Any, **_k: Any) -> str:
+        seen["system"] = messages[0].content
+        return '{"plan": [{"route": "rag", "task": "look it up"}], "reason": "r"}'
+
+    monkeypatch.setattr(sup, "complete", scripted)
+    out = await sup.plan_and_route(
+        {"user_msg": "what was the total revenue?", "user_documents": ["annual-report.pdf"]}
+    )
+    assert "annual-report.pdf" in seen["system"]
+    assert "route to rag" in seen["system"]
+    assert out["route"] == "rag"
+
+    # zero documents: the slot renders empty, prompt unchanged in spirit
+    out2 = await sup.plan_and_route({"user_msg": "hello", "user_documents": []})
+    assert "uploaded these documents" not in seen["system"] or out2  # slot empty

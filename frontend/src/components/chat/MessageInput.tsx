@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { ImagePlus, Mic, MicOff, Send, Square, X } from 'lucide-react'
 import clsx from 'clsx'
 import toast from 'react-hot-toast'
-import { uploadAttachment } from '../../api/documents'
+import { uploadAttachment, uploadDocument } from '../../api/documents'
 
 interface Props {
   disabled: boolean
@@ -67,14 +67,33 @@ export default function MessageInput({
     setAttachment(null)
   }
 
+  const DOC_EXTENSIONS = ['.pdf', '.docx', '.pptx', '.xlsx', '.xls', '.csv', '.txt', '.md']
+
   const pickImage = async (file: File | undefined) => {
     if (!file) return
+    const isDoc = DOC_EXTENSIONS.some((ext) => file.name.toLowerCase().endsWith(ext))
     setUploading(true)
     try {
-      const { token } = await uploadAttachment(file)
-      setAttachment({ token, name: file.name })
+      if (isDoc) {
+        // documents go to the Documents panel + RAG index; the message then
+        // references the file by name so routing finds it
+        const { status } = await uploadDocument(file)
+        if (status !== 'ready') {
+          toast.error(`"${file.name}" could not be processed`)
+          return
+        }
+        setText((prev) => (prev ? `${prev} ` : '') + `Regarding "${file.name}": `)
+        toast.success(`${file.name} uploaded — ask away`)
+      } else {
+        const { token } = await uploadAttachment(file)
+        setAttachment({ token, name: file.name })
+      }
     } catch {
-      toast.error('Image upload failed (PNG/JPEG, max 5MB)')
+      toast.error(
+        isDoc
+          ? 'Document upload failed (max 10MB; PDF/DOCX/PPTX/XLSX/XLS/CSV/TXT/MD)'
+          : 'Image upload failed (PNG/JPEG, max 5MB)'
+      )
     } finally {
       setUploading(false)
       if (imageInputRef.current) imageInputRef.current.value = ''
@@ -141,7 +160,7 @@ export default function MessageInput({
         <input
           ref={imageInputRef}
           type="file"
-          accept="image/png,image/jpeg"
+          accept="image/png,image/jpeg,.pdf,.docx,.pptx,.xlsx,.xls,.csv,.txt,.md"
           className="hidden"
           onChange={(e) => void pickImage(e.target.files?.[0])}
         />

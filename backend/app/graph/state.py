@@ -39,6 +39,7 @@ class AssistantState(TypedDict, total=False):
     user_id: str
     user_name: str
     user_msg: str
+    user_documents: list[str]  # ready upload filenames — routing awareness, per-turn
     correlation_id: str
     turn_id: str  # idempotency key for persist (normal + out-of-band paths)
     hitl_enabled: bool  # checkpointer present -> sensitive tools may interrupt

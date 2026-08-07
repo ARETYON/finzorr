@@ -25,8 +25,14 @@ from app.schemas.documents import DocumentOut, DocumentUploadOut
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
-_ALLOWED_EXTENSIONS = (".pdf", ".docx", ".csv", ".txt", ".md")
-_MAGIC = {".pdf": b"%PDF-", ".docx": b"PK"}
+_ALLOWED_EXTENSIONS = (".pdf", ".docx", ".pptx", ".xlsx", ".xls", ".csv", ".txt", ".md")
+_MAGIC = {
+    ".pdf": b"%PDF-",
+    ".docx": b"PK",
+    ".pptx": b"PK",
+    ".xlsx": b"PK",
+    ".xls": b"\xd0\xcf\x11\xe0",  # OLE2 container
+}
 _READ_CHUNK = 1024 * 1024
 
 
@@ -34,7 +40,7 @@ def _validate_type(filename: str, data: bytes) -> str | None:
     """Return an error message, or None when the file looks legitimate."""
     lower = filename.lower()
     if not lower.endswith(_ALLOWED_EXTENSIONS):
-        return "supported types: PDF, DOCX, CSV, TXT, MD"
+        return "supported types: PDF, DOCX, PPTX, XLSX, XLS, CSV, TXT, MD"
     for ext, magic in _MAGIC.items():
         if lower.endswith(ext) and not data.startswith(magic):
             return f"file does not look like a valid {ext[1:].upper()}"

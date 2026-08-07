@@ -59,8 +59,9 @@ _JSON_BLOCK = re.compile(r"\{.*\}", re.DOTALL)
 register(
     AgentPrompt(
         name="supervisor_planner",
-        version="2",
+        version="3",
         template=(
+            "{documents}"
             "You plan how an assistant answers, using these specialists:\n"
             "- general_chat: anything conversational, coding, writing, general knowledge\n"
             "- memory: the user's watchlist, PRICE ALERTS ('alert me when...'), and "
@@ -144,10 +145,23 @@ _RESEARCH_HINTS = re.compile(
 )
 
 
-def keyword_route(message: str) -> str:
+def _mentions_document(message: str, documents: list[str]) -> bool:
+    """True when the message names one of the user's uploads (stem match,
+    ≥4 chars to avoid trivial hits) — near-certain rag intent."""
+    lowered = message.lower()
+    for name in documents:
+        stem = name.rsplit(".", 1)[0].lower()
+        if len(stem) >= 4 and stem in lowered:
+            return True
+    return False
+
+
+def keyword_route(message: str, documents: list[str] | None = None) -> str:
     """Deterministic fallback router (works with the LLM fully down)."""
     if _URL_HINT.search(message):
         return "tools"
+    if documents and _mentions_document(message, documents):
+        return "rag"
     if _MEMORY_HINTS.search(message):
         return "memory"
     if _SQL_HINTS.search(message):
@@ -198,12 +212,27 @@ async def plan_and_route(state: AssistantState) -> AssistantState:
     degrades to classifier behavior, never to a dead turn.
     """
     user_msg = state["user_msg"]
-    fallback = keyword_route(user_msg)
+    documents = state.get("user_documents", [])
+    fallback = keyword_route(user_msg, documents)
+    # the planner must KNOW uploads exist — without this line a natural
+    # content question ("what was Q3 revenue?") never reaches the user's
+    # own report (the design gap found live)
+    documents_note = (
+        "The user has uploaded these documents: "
+        + ", ".join(documents[:20])
+        + " — questions answerable from them should route to rag.\n\n"
+        if documents
+        else ""
+    )
     decision: dict[str, Any] = {}
     try:
         raw = await complete(
             [
-                SystemMessage(content=render_agent_prompt("supervisor_planner")),
+                SystemMessage(
+                    content=render_agent_prompt(
+                        "supervisor_planner", documents=documents_note
+                    )
+                ),
                 UserMessage(content=f"{_routing_context(state)}Message to route: {user_msg}"),
             ],
             model=settings.SUPERVISOR_MODEL or None,

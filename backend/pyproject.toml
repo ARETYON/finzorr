@@ -26,7 +26,6 @@ dependencies = [
     "psycopg[binary]>=3.2",
     "psycopg-pool>=3.2",  # checkpointer AsyncConnectionPool — explicit, not transitive
     "pymupdf>=1.24",
-    "pdfplumber>=0.11",
     "python-multipart>=0.0.9",
     "beautifulsoup4>=4.12",
     "lxml>=5.2",
@@ -34,6 +33,9 @@ dependencies = [
     "cryptography>=50.0.0",
     "opentelemetry-sdk>=1.27",
     "opentelemetry-exporter-otlp-proto-http>=1.27",
+    "python-pptx>=1.0.2",
+    "openpyxl>=3.1.5",
+    "xlrd>=2.0.2",
 ]
 
 [dependency-groups]
@@ -86,6 +88,9 @@ module = [
     "rapidfuzz.*",
     "fitz.*",
     "docx.*",
+    "pptx.*",
+    "openpyxl.*",
+    "xlrd.*",
     "bs4.*",
     "qdrant_client.*",
     "langgraph.*",

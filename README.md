@@ -1,6 +1,6 @@
 # finzorr.ai
 
-A general-purpose AI assistant platform — ChatGPT-style multi-session chat, PDF
+A general-purpose AI assistant platform — ChatGPT-style multi-session chat, document
 upload + analysis, and pluggable tool integrations — with **Indian stock markets
 (NSE/BSE)** as the first fully-built vertical: live quotes, natural-language stock
 screening, market news, and a personal watchlist.
@@ -15,7 +15,7 @@ Full architecture: [`PROJECT_PLAN.md`](./PROJECT_PLAN.md).
 | `general_chat` | Anything conversational (default) | "Write a haiku about monsoon" |
 | `tools` | Live quotes/fundamentals/history via function-calling agent loop | "Price of TCS?" |
 | `nl2sql` | Screening many stocks (guarded SQL over a daily-refreshed table) | "Stocks with P/E under 20" |
-| `rag` | Finance glossary + your uploaded PDFs, with citations | "What does my contract say about notice period?" |
+| `rag` | Finance glossary + your uploaded documents (PDF/DOCX/PPTX/XLSX/XLS/CSV/TXT/MD), with citations | "What does my contract say about notice period?" |
 | `web_search` | Fresh news (Tavily → SearXNG → DuckDuckGo) | "Why did Adani stock fall today?" |
 | `memory` | Your watchlist (add/remove/show) | "Add Infosys to my watchlist" |
 
@@ -101,6 +101,6 @@ frontend/   React + Vite + Tailwind SPA (multi-session chat, watchlist, uploads)
 
 ## Status
 
-Local end-to-end build is complete and verified (all six routes, PDF RAG,
+Local end-to-end build is complete and verified (all six routes, document RAG,
 watchlist, feedback loop, Postgres checkpointing). Deployment (Cloudflare Pages +
 Tunnel, OVH VMs, UAT/PROD CD) is the next phase — see `PROJECT_PLAN.md`.

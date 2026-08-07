@@ -43,6 +43,22 @@ async def _load_history(session_id: uuid.UUID) -> list[dict[str, Any]]:
     return [{"role": m.role, "content": m.content} for m in reversed(rows)]
 
 
+async def _load_document_names(user_id: uuid.UUID) -> list[str]:
+    """The user's READY upload filenames — routing awareness only. Without
+    this, the planner can't know an uploaded report exists and a natural
+    content question never reaches rag (found live)."""
+    from app.models.document import Document
+
+    async with SessionLocal() as db:
+        result = await db.execute(
+            select(Document.filename)
+            .where(Document.user_id == user_id, Document.status == "ready")
+            .order_by(Document.uploaded_at.desc())
+            .limit(20)
+        )
+        return [row[0] for row in result]
+
+
 async def _load_instructions(user_id: uuid.UUID, session_id: uuid.UUID) -> str:
     """Custom instructions + the session's persona prompt, merged."""
     from app.models.chat_session import ChatSession
@@ -173,6 +189,7 @@ async def run_turn(
         return await _vision_turn(session_id, user_id, user_msg, attachments)
     graph, has_checkpointer = await get_graph()
     user_instructions = await _load_instructions(user_id, session_id)
+    user_documents = await _load_document_names(user_id)
     from app.memory.facts import extract_and_store, recall
 
     memories = await recall(str(user_id), user_msg)
@@ -190,6 +207,7 @@ async def run_turn(
         "user_id": str(user_id),
         "user_name": user_name,
         "user_msg": user_msg,
+        "user_documents": user_documents,
         "correlation_id": cid,
         "turn_id": turn_id,
         # explicit per-turn resets — only `messages` may accumulate

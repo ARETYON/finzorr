@@ -11,6 +11,11 @@ import os
 os.environ["APP_ENV"] = "dev"
 os.environ["DEV_FAKE_AUTH"] = "true"
 os.environ["COOKIE_DOMAIN"] = ""
+# Tests must NEVER trace to LangSmith: the developer's local .env may have
+# tracing on, and test_lifespan boots the real lifespan — without this pin
+# the whole suite live-posts trace batches from background threads.
+os.environ["LANGSMITH_TRACING"] = "false"
+os.environ["LANGSMITH_API_KEY"] = ""
 os.environ["DATABASE_URL"] = os.environ.get(
     "TEST_DATABASE_URL",
     "postgresql+asyncpg://finzorr:finzorr@localhost:5433/finzorr_test",
@@ -64,6 +69,11 @@ async def _ensure_database() -> None:
 async def _database() -> AsyncIterator[None]:
     """Fresh schema once per run; empty tables + a fresh pool per test."""
     global _schema_ready  # noqa: PLW0603
+    # Discard anything a PRIOR test left in the pool: a connection created on
+    # another (now-closed) event loop poisons every later checkout with
+    # "attached to a different loop" — dispose defensively at setup, not
+    # only at teardown.
+    await engine.dispose()
     if not _schema_ready:
         await _ensure_database()
         async with engine.begin() as conn:

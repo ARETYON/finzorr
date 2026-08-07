@@ -1,5 +1,6 @@
-// PDF upload button + user document list (delete supported). After upload the
-// document is immediately queryable via the rag route ("what does my PDF say…").
+// Document upload button + user document list (delete supported). Accepts
+// PDF/DOCX/PPTX/XLSX/XLS/CSV/TXT/MD; after upload the document is immediately
+// queryable in chat (the router knows the user's uploads by name).
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { FileText, Loader2, Paperclip, Trash2 } from 'lucide-react'
@@ -30,9 +31,9 @@ export default function FileUpload() {
 
   const onPick = async (file: File | undefined) => {
     if (!file) return
-    const allowed = ['.pdf', '.docx', '.csv', '.txt', '.md']
+    const allowed = ['.pdf', '.docx', '.pptx', '.xlsx', '.xls', '.csv', '.txt', '.md']
     if (!allowed.some((ext) => file.name.toLowerCase().endsWith(ext))) {
-      toast.error('Supported types: PDF, DOCX, CSV, TXT, MD')
+      toast.error('Supported types: PDF, DOCX, PPTX, XLSX, XLS, CSV, TXT, MD')
       return
     }
     setBusy(true)
@@ -77,14 +78,14 @@ export default function FileUpload() {
         <input
           ref={inputRef}
           type="file"
-          accept=".pdf,.docx,.csv,.txt,.md"
+          accept=".pdf,.docx,.pptx,.xlsx,.xls,.csv,.txt,.md"
           className="hidden"
           onChange={(e) => void onPick(e.target.files?.[0])}
         />
       </div>
       <ul className="space-y-1">
         {docs.length === 0 && (
-          <li className="text-[11px] text-ink-faint">Upload a PDF/DOCX/CSV, then ask about it.</li>
+          <li className="text-[11px] text-ink-faint">Upload a PDF, Word, PowerPoint, Excel or CSV file, then ask about it.</li>
         )}
         {docs.map((d) => (
           <li key={d.id} className="group flex items-center gap-1.5 text-[11px] text-ink-mid">
