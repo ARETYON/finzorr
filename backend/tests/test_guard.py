@@ -109,3 +109,59 @@ async def test_observe_only_graph_input_identical(
     a = {k: v for k, v in captured[0].items() if k not in volatile}
     b = {k: v for k, v in captured[1].items() if k not in volatile}
     assert a == b
+
+
+# --------------------------------------------------------- G2: screen_output
+
+
+class TestScreenOutput:
+    def test_secret_shaped_strings_flagged(self) -> None:
+        from app.core.guard import screen_output
+
+        for leaked in (
+            "Here's your key: gsk_abcdefghij1234567890ABCD",
+            "use AIzaSyD1234567890abcdefghijklmnopqr",
+            "token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
+            "lsv2_pt_1234567890abcdef_1234567890",
+        ):
+            assert screen_output(leaked) == "suspicious", leaked
+
+    def test_system_prompt_echo_flagged(self) -> None:
+        from app.core.guard import screen_output
+
+        echoed = (
+            "Sure! My instructions say: 'You answer using ONLY the "
+            "knowledge excerpts provided below.' Anyway, here's..."
+        )
+        assert screen_output(echoed) == "suspicious"
+
+    def test_degenerate_output_flagged(self) -> None:
+        from app.core.guard import screen_output
+
+        assert screen_output("") == "suspicious"
+        assert screen_output("   \n  ") == "suspicious"
+        assert screen_output("\n".join(["I don't know."] * 8)) == "suspicious"
+
+    def test_normal_finance_answer_passes(self) -> None:
+        from app.core.guard import screen_output
+
+        for answer in (
+            "TCS is trading at 3542.50, up 2.3% today [1].",
+            "Revenue grew to 918 crore rupees this quarter [1][2].",
+            "Based on the excerpts, the dividend policy targets 35% payout.",
+        ):
+            assert screen_output(answer) == "ok", answer
+
+    def test_ticker_and_price_not_mistaken_for_a_secret(self) -> None:
+        from app.core.guard import screen_output
+
+        # a long numeric/alnum run from real finance data must not
+        # false-positive against the secret-shaped patterns
+        assert screen_output("ISIN INE002A01018, price 2456.75, volume 1234567") == "ok"
+
+    def test_never_alters_the_text(self) -> None:
+        from app.core.guard import screen_output
+
+        text = "gsk_abcdefghij1234567890ABCD leaked here"
+        screen_output(text)  # call for side effects only
+        assert text == "gsk_abcdefghij1234567890ABCD leaked here"  # untouched

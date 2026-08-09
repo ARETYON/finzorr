@@ -147,6 +147,19 @@ async def compose_node(state: AssistantState) -> AssistantState:
         log.error("node.compose.error", error=str(exc))
         # renumbered texts here too, or the fallback answer has colliding markers
         final = "\n\n---\n\n".join(renumbered_texts)
+    # citation validity on the synthesized text against the MERGED/renumbered
+    # citation set — a different marker space than any single step's own
+    # (observe-only, never mangles the answer)
+    from app.core.citations import find_invalid_markers
+    from app.core.guard import screen_output
+    from app.core.trace import tag as _tag
+
+    invalid = find_invalid_markers(final, len(merged_citations))
+    if invalid:
+        _tag("citation:invalid")
+        log.warning("node.compose.invalid_citations", markers=invalid)
+    if screen_output(final) == "suspicious":
+        _tag("output:suspicious")
     return {
         "final_text": final,
         "citations": merged_citations,

@@ -142,8 +142,16 @@ async def recall(user_id: str, query: str) -> list[str]:
                 if item.score is None or item.score >= RECALL_MIN_SCORE
             ]
         vector = await embed_query(query)
+        # atomic short-fact recall wants the single most relevant fact, not
+        # diverse-but-weaker ones — MMR is a RAG-excerpt concern; mmr=False
+        # also skips the oversized/with-vectors fetch entirely (this runs
+        # on every turn, so the plain-search cost profile matters)
         hits = await search(
-            vector, tenants=[tenant_for(user_id)], top_k=RECALL_TOP_K, min_score=RECALL_MIN_SCORE
+            vector,
+            tenants=[tenant_for(user_id)],
+            top_k=RECALL_TOP_K,
+            min_score=RECALL_MIN_SCORE,
+            mmr=False,
         )
         return [h.text for h in hits]
     except Exception:  # noqa: BLE001

@@ -7,6 +7,7 @@ from app.auth.dependencies import get_current_user, get_or_create_user
 from app.auth.google_oauth import GoogleAuthError, verify_google_id_token
 from app.auth.jwt_session import SESSION_COOKIE, cookie_kwargs, create_session_jwt
 from app.core.config import settings
+from app.core.guard import screen_floor
 from app.core.logging import log
 from app.core.pagination import BARE_LIST_DESCRIPTION
 from app.db.session import get_db
@@ -73,8 +74,18 @@ async def update_me(
     db: AsyncSession = Depends(get_db),
 ) -> User:
     """Update per-user preferences (custom instructions)."""
+    instructions = (body.custom_instructions or "").strip()[:2000]
+    # write-time gate: a DIFFERENT risk profile than the runtime never-block
+    # guard — this is gatekeeping a STORED, reusable artifact (every future
+    # turn re-reads it) rather than a one-off message
+    if instructions and screen_floor(instructions) == "suspicious":
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "custom instructions can't contain override-style phrases "
+            "(e.g. 'ignore previous instructions')",
+        )
     merged = await db.merge(user)
-    merged.custom_instructions = (body.custom_instructions or "").strip()[:2000] or None
+    merged.custom_instructions = instructions or None
     await db.commit()
     await db.refresh(merged)
     return merged

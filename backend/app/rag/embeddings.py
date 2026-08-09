@@ -9,6 +9,7 @@ import httpx
 from langsmith import traceable
 
 from app.core.config import settings
+from app.core.pii import redact_for_trace
 
 _TIMEOUT_S = 30.0
 
@@ -17,15 +18,18 @@ class EmbeddingError(Exception):
     """Raised when the embedding service fails or returns a bad shape."""
 
 
-@traceable(
-    run_type="embedding",
-    name="embed",
-    # embedding inputs can be whole document chunks — record shape, not text
-    process_inputs=lambda inputs: {
-        "count": len(inputs.get("texts", [])),
-        "first": (inputs.get("texts") or [""])[0][:120],
-    },
-)
+def _trace_preview(inputs: dict[str, object]) -> dict[str, object]:
+    """Shape only, plus a PII-redacted preview — never raw document text
+    in a trace payload."""
+    texts = inputs.get("texts") or [""]
+    first = texts[0] if isinstance(texts, list) and texts else ""
+    return {
+        "count": len(texts) if isinstance(texts, list) else 0,
+        "first": redact_for_trace(str(first))[:120],
+    }
+
+
+@traceable(run_type="embedding", name="embed", process_inputs=_trace_preview)
 async def embed_texts(texts: list[str]) -> list[list[float]]:
     """Embed a batch of texts; raises EmbeddingError on any failure."""
     if not texts:

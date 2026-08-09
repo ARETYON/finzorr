@@ -6,7 +6,7 @@ Filtered ANN only ever touches the caller's slice plus the global corpus.
 
 import uuid
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from langsmith import traceable
 from qdrant_client import AsyncQdrantClient, models
@@ -92,6 +92,44 @@ async def upsert_chunks(
     return len(points)
 
 
+def _cosine(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
+    norm_a = sum(x * x for x in a) ** 0.5
+    norm_b = sum(y * y for y in b) ** 0.5
+    return dot / (norm_a * norm_b) if norm_a and norm_b else 0.0
+
+
+def _mmr_select(
+    query_vector: list[float],
+    candidates: list[tuple[Any, list[float]]],
+    top_k: int,
+    lam: float,
+) -> list[Any]:
+    """Maximal Marginal Relevance over already-fetched candidates (pure
+    python cosine — no new dependency). ALWAYS keeps rank-1 by raw
+    similarity first (top-1 floor: a diversity-heavy lambda can reshuffle
+    positions 2+ but can never drop the single best hit), then greedily
+    fills the rest balancing relevance-to-query against
+    redundancy-to-already-selected."""
+    if not candidates:
+        return []
+    scored = sorted(
+        candidates, key=lambda c: _cosine(query_vector, c[1]), reverse=True
+    )
+    selected = [scored[0]]
+    remaining = scored[1:]
+    while remaining and len(selected) < top_k:
+        best_idx, best_value = 0, float("-inf")
+        for i, (_point, vec) in enumerate(remaining):
+            relevance = _cosine(query_vector, vec)
+            redundancy = max(_cosine(vec, s_vec) for _s_point, s_vec in selected)
+            value = lam * relevance - (1 - lam) * redundancy
+            if value > best_value:
+                best_idx, best_value = i, value
+        selected.append(remaining.pop(best_idx))
+    return [point for point, _vec in selected]
+
+
 @traceable(
     run_type="retriever",
     name="qdrant.search",
@@ -99,22 +137,62 @@ async def upsert_chunks(
         "tenants": inputs.get("tenants", []),
         "top_k": inputs.get("top_k", 6),
         "min_score": inputs.get("min_score", 0.4),
+        "mmr": inputs.get("mmr", True),
     },
 )
 async def search(
-    vector: list[float], tenants: list[str], top_k: int = 6, min_score: float = 0.4
+    vector: list[float],
+    tenants: list[str],
+    top_k: int = 6,
+    min_score: float = 0.4,
+    mmr: bool = True,
 ) -> list[Hit]:
-    """Tenant-filtered ANN search."""
+    """Tenant-filtered ANN search.
+
+    `mmr=True` (default, the RAG path): fetches `top_k*2` candidates WITH
+    vectors and diversity-re-ranks down to `top_k`, reducing near-duplicate
+    chunk retrieval. `mmr=False` (memory-fact recall, `app/memory/facts.py`
+    — atomic short-fact recall wants the single most relevant fact, not
+    diverse-but-weaker ones): the ORIGINAL single-fetch path, unchanged in
+    both results AND cost — the oversized/with-vectors fetch is skipped
+    entirely, not merely its selection step, since `recall()` runs on
+    every turn.
+    """
     await ensure_collection()
-    response = await get_client().query_points(
-        COLLECTION,
-        query=vector,
-        limit=top_k,
-        score_threshold=min_score,
-        query_filter=models.Filter(
-            must=[models.FieldCondition(key="tenant", match=models.MatchAny(any=tenants))]
-        ),
+    query_filter = models.Filter(
+        must=[models.FieldCondition(key="tenant", match=models.MatchAny(any=tenants))]
     )
+    if not mmr:
+        response = await get_client().query_points(
+            COLLECTION,
+            query=vector,
+            limit=top_k,
+            score_threshold=min_score,
+            query_filter=query_filter,
+        )
+        points = list(response.points)
+    else:
+        response = await get_client().query_points(
+            COLLECTION,
+            query=vector,
+            limit=top_k * 2,
+            score_threshold=min_score,
+            query_filter=query_filter,
+            with_vectors=True,
+        )
+        candidates: list[tuple[Any, list[float]]] = [
+            (p, cast("list[float]", p.vector))
+            for p in response.points
+            if isinstance(p.vector, list)
+            and all(isinstance(x, int | float) for x in p.vector)
+        ]
+        # a point without a returned vector can't be MMR-scored — keep it
+        # only via the plain-score fallback if MMR yields nothing usable
+        points = (
+            _mmr_select(vector, candidates, top_k, settings.RAG_MMR_LAMBDA)
+            if candidates
+            else list(response.points)[:top_k]
+        )
     return [
         Hit(
             score=float(p.score),
@@ -124,7 +202,7 @@ async def search(
             tenant=str((p.payload or {}).get("tenant", "")),
             doc_id=str((p.payload or {}).get("doc_id", "")).split(":")[0],
         )
-        for p in response.points
+        for p in points
     ]
 
 

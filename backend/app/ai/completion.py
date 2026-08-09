@@ -8,6 +8,7 @@ Adds what raw providers don't have:
 """
 
 import asyncio
+import dataclasses
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
@@ -19,6 +20,7 @@ from app.ai.registry import default_model, get_provider
 from app.core.config import settings
 from app.core.logging import log
 from app.core.otel import span
+from app.core.pii import redact_for_trace
 
 OnToken = Callable[[str], Awaitable[None]]
 
@@ -61,10 +63,28 @@ async def _record_usage(provider: str, usage: Usage) -> None:
 # (no client, no network, ~0.1ms).
 def _trim_llm_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
     """Run inputs minus the noise: on_token is a function repr, and `tools`
-    would serialize the ENTIRE tool-schema list on every agent-loop call."""
+    would serialize the ENTIRE tool-schema list on every agent-loop call.
+    `messages` (which carries full RAG excerpts / prompts) is PII-redacted
+    for the TRACED COPY only.
+
+    CRITICAL INVARIANT: this function's return value is used ONLY to build
+    the LangSmith payload — langsmith never feeds it back into the real
+    call — but `messages` and its elements are the SAME mutable objects
+    later passed to `provider.chat()`. Redaction therefore builds NEW
+    message objects (`dataclasses.replace`) and never writes `.content` on
+    the originals; an in-place edit would silently redact what the LLM
+    actually sees. Test-pinned in test_ai_completion_edges.py.
+    """
     tools = inputs.get("tools")
+    messages = inputs.get("messages")
+    redacted_messages = (
+        [dataclasses.replace(m, content=redact_for_trace(m.content)) for m in messages]
+        if isinstance(messages, list)
+        else messages
+    )
     return {
-        **{k: v for k, v in inputs.items() if k not in ("on_token", "tools")},
+        **{k: v for k, v in inputs.items() if k not in ("on_token", "tools", "messages")},
+        "messages": redacted_messages,
         "tools": [t.name for t in tools] if tools else None,
     }
 

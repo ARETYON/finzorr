@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     EMBED_OLLAMA_URL: str = "http://localhost:11434"
     EMBED_MODEL: str = "nomic-embed-text:v1.5"
     EMBED_DIM: int = 768
+    # MMR diversity balance for RAG retrieval (0=max diversity, 1=pure
+    # relevance); the top-1 hit by raw score is always kept regardless
+    RAG_MMR_LAMBDA: float = 0.5
 
     # --- Auth ---
     GOOGLE_CLIENT_ID: str = ""

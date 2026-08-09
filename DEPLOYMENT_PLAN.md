@@ -226,6 +226,7 @@ Run through together once everything above is done:
 | Rotate a key | Edit `/opt/finzorr/prod.env`, then `docker compose up -d api`. NOTE: rotating `SESSION_SECRET` logs every user out |
 | Enable LangSmith in prod | Set `LANGSMITH_TRACING=true` + the API key in prod.env, restart api — remember prompts then leave the server |
 | Daily drift watch | Add to the VM's cron: `30 7 * * * cd /opt/finzorr && docker compose run --rm api python scripts/drift_watch.py >> /opt/finzorr/backups/drift.log 2>&1` — alerts if any quality eval regresses |
+| Live trace-health watch | Add to the VM's cron (only meaningful once `LANGSMITH_TRACING=true` in prod.env): `0 */6 * * * cd /opt/finzorr && docker compose run --rm api python scripts/trace_health_watch.py >> /opt/finzorr/backups/trace-health.log 2>&1` — alerts on live `degraded`/`guard:suspicious` tag rate over the trailing window; skips cleanly (exit 0) if tracing is off |
 | Uptime alerts | uptimerobot.com (free) → HTTP monitor on `https://api.finzorr.ai/healthz` → email alert |
 | Free-tier pressure | Watch for `ai.budget.exceeded` in logs — the chain absorbs it; recurring daily = time to consider Groq's paid tier |
 

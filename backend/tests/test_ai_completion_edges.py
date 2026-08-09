@@ -69,6 +69,7 @@ class FakeProvider:
         response_format: dict[str, Any] | None = None,
     ) -> AsyncIterator[StreamEvent]:
         self.calls += 1
+        self.received_messages = messages  # captured for trace-redaction invariant tests
         if self.delay_s:
             await asyncio.sleep(self.delay_s)
         for event in self.events:
@@ -305,3 +306,48 @@ async def test_complete_returns_full_text(monkeypatch: pytest.MonkeyPatch) -> No
     providers = {"groq": FakeProvider("groq", [TextDelta("42"), _done("42")])}
     _wire(monkeypatch, providers)
     assert await completion.complete(MESSAGES, provider="groq") == "42"
+
+
+# ---------------------------------------------- G3: trace-redaction invariant
+
+
+async def test_trace_redaction_never_reaches_the_real_provider_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """CRITICAL invariant: _trim_llm_inputs's PII-redacted copy feeds ONLY the
+    LangSmith payload. The real provider.chat() call must receive the
+    ORIGINAL, unredacted messages — byte-identical content, same objects'
+    worth of data. An in-place redaction bug would silently corrupt what the
+    LLM actually sees."""
+    monkeypatch.setattr(settings, "DAILY_TOKEN_BUDGET", 0)
+    monkeypatch.setattr(settings, "LLM_FALLBACK_PROVIDER", "")
+    provider = FakeProvider("groq", [TextDelta("ok"), _done("ok")])
+    _wire(monkeypatch, {"groq": provider})
+
+    original_content = "My PAN is ABCDE1234F and email is user@example.com"
+    messages: list[ChatMessage] = [UserMessage(content=original_content)]
+
+    await completion.complete(messages, provider="groq")
+
+    # the REAL call received the untouched original text
+    received = provider.received_messages
+    assert received[0].content == original_content
+    assert "ABCDE1234F" in received[0].content
+    assert "user@example.com" in received[0].content
+    # and the caller's own list/objects were never mutated either
+    assert messages[0].content == original_content
+
+
+def test_trim_llm_inputs_redacts_only_the_traced_copy() -> None:
+    """The traced-payload copy IS redacted (proves the mechanism works, not
+    just that it's inert)."""
+    original = [UserMessage(content="contact user@example.com about PAN ABCDE1234F")]
+    trimmed = completion._trim_llm_inputs({"messages": original, "tools": None})
+    traced_content = trimmed["messages"][0].content
+    assert "user@example.com" not in traced_content
+    assert "ABCDE1234F" not in traced_content
+    assert "[REDACTED:" in traced_content
+    # the ORIGINAL object passed in is untouched
+    assert original[0].content == "contact user@example.com about PAN ABCDE1234F"
+    # and it's a genuinely different object, not the same one merely read
+    assert trimmed["messages"][0] is not original[0]

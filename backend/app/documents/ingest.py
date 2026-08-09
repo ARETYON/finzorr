@@ -266,6 +266,13 @@ async def ingest_document(
     """
     mark(filename=filename, format=filename.rsplit(".", 1)[-1].lower(), bytes=len(data))
     pages = await asyncio.to_thread(_extract_traced, filename, data)
+    # audit visibility only — the document itself is never redacted or
+    # blocked; PII types (never values) are recorded as trace metadata
+    from app.core.pii import detect_pii
+
+    full_text = " ".join(t for _, t in pages)
+    if full_text:
+        mark(pii_types=sorted(set(detect_pii(full_text))))
     chunks = _split_traced(pages, filename)
     if not chunks:
         return 0

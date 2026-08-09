@@ -29,10 +29,18 @@ services:
       - "6380:6379"
 
   qdrant:
+    # ACTION REQUIRED for existing dev setups: Qdrant now requires an API
+    # key and its port is loopback-only. Set QDRANT_API_KEY in your local
+    # .env to any value (must match this compose file) before restarting —
+    # the app's own get_client() sends QDRANT_API_KEY and will 401 against
+    # an unauthenticated Qdrant otherwise. Was previously unauthenticated
+    # with a network-exposed port (0.0.0.0:6335) — this closes that gap.
     image: qdrant/qdrant:latest
     container_name: finzorr-qdrant
+    environment:
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:?set QDRANT_API_KEY in your .env}
     ports:
-      - "6335:6333"
+      - "127.0.0.1:6335:6333"
     volumes:
       - finzorr_qdrant:/qdrant/storage
 

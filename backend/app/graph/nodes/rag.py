@@ -6,12 +6,16 @@ prompt forbids following instructions found inside them.
 """
 
 import asyncio
+import re
 from typing import Any
 
 from app.ai.base import SystemMessage, UserMessage
 from app.ai.completion import stream
+from app.core.citations import find_invalid_markers
+from app.core.guard import screen_floor, screen_output
 from app.core.logging import log
 from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
+from app.core.trace import tag
 from app.core.untrusted import wrap_untrusted
 from app.graph.nodes.common import step_context, task_for, with_instructions
 from app.graph.state import AssistantState
@@ -78,19 +82,38 @@ def _citations(blocks: list[Block]) -> list[dict[str, Any]]:
     ]
 
 
+# Whole-document-intent: a bare "summarize"/"overview" would ALSO match
+# unrelated questions ("give me an overview of Q3 margins") — every
+# alternative is anchored to a document reference so it can't fire on
+# ordinary phrasing (same anchoring discipline as app/core/guard.py).
+_WHOLE_DOC_INTENT = re.compile(
+    r"(summarize (it|this|the doc\w*)|overview of (it|this|the doc\w*)"
+    r"|(entire|full|whole) document|explain the document"
+    r"|summary of (it|this|the doc\w*)"
+    r"|everything (in|about) (it|this|the doc\w*))",
+    re.IGNORECASE,
+)
+
+
 async def _expand_best_small_doc(
-    user_id: str, hits: list[Hit]
+    user_id: str, hits: list[Hit], query: str = ""
 ) -> tuple[list[Block], bool]:
-    """If the best-scoring hit from the USER's tenant belongs to a small
-    document, replace that doc's excerpt blocks with its FULL labeled text
-    (node-local only — never enters graph state). Everything else keeps
-    excerpt behavior; any failure falls back to plain excerpts."""
+    """If a small document shows BROAD relevance — either >=2 retrieved
+    hits from the same doc, or the query explicitly asks for the whole
+    document — replace that doc's excerpt blocks with its FULL labeled
+    text (node-local only — never enters graph state). A SINGLE lucky
+    chunk match on an unrelated question no longer dumps the whole
+    document (context-validation fix). Everything else keeps excerpt
+    behavior; any failure falls back to plain excerpts."""
     blocks = _hit_blocks(hits)
     try:
         candidates = [h for h in hits if h.tenant == user_id and h.doc_id]
         if not candidates:
             return blocks, False
         best = max(candidates, key=lambda h: h.score)
+        same_doc_hits = sum(1 for h in candidates if h.doc_id == best.doc_id)
+        if same_doc_hits < 2 and not _WHOLE_DOC_INTENT.search(query):
+            return blocks, False
 
         import uuid as uuid_module
 
@@ -168,7 +191,13 @@ async def rag_node(state: AssistantState) -> AssistantState:
             )
         )
     else:
-        blocks, expanded = await _expand_best_small_doc(user_id, hits)
+        blocks, expanded = await _expand_best_small_doc(user_id, hits, task_for(state))
+        # read-time doc-injection screening: distinct from wrap_untrusted's
+        # fencing (which neutralizes an embedded instruction either way) —
+        # this adds VISIBILITY that a retrieved document attempted one.
+        # Observe-only, same never-block contract as the rest of the guard.
+        if any(screen_floor(text) == "suspicious" for _source, text in blocks):
+            tag("guard:doc_injection_suspected")
         prompt = render_agent_prompt("rag_system", excerpts=_format_excerpts(blocks))
         if expanded:
             prompt += (
@@ -183,10 +212,22 @@ async def rag_node(state: AssistantState) -> AssistantState:
             temperature=0.3,
             max_tokens=1536,
         )
+        if screen_output(done.text) == "suspicious":
+            tag("output:suspicious")
+        citations = _citations(blocks)
+        # citation validity (observe-only — never mangles the answer)
+        invalid = find_invalid_markers(done.text, len(citations))
+        if invalid:
+            tag("citation:invalid")
+            log.warning("node.rag.invalid_citations", markers=invalid)
+        # hallucination-risk signal: hits existed but the answer cites none
+        # of them, despite the prompt instructing "cite every claim"
+        if hits and not re.search(r"\[\d+\]", done.text):
+            tag("hallucination:no_citations")
         return {
             "final_text": done.text,
             "route": "rag",
-            "citations": _citations(blocks),
+            "citations": citations,
             "sources": [
                 "finzorr glossary" if h.tenant == GLOSSARY_TENANT else "your documents"
                 for h in hits[:1]

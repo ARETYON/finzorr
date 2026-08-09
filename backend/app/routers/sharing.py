@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
 from app.core.config import settings
+from app.core.guard import screen_floor
 from app.core.pagination import BARE_LIST_DESCRIPTION, Page, page_params
 from app.db.session import get_db
 from app.models.chat_session import ChatSession
@@ -127,6 +128,15 @@ async def create_persona(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> PersonaCreateOut:
+    # write-time gate: a persona's system_prompt is a STORED, reusable
+    # artifact (re-read into every future turn using it) — a different
+    # risk profile than the runtime never-block guard
+    if screen_floor(body.system_prompt) == "suspicious":
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "persona instructions can't contain override-style phrases "
+            "(e.g. 'ignore previous instructions')",
+        )
     persona = Persona(user_id=user.id, name=body.name, system_prompt=body.system_prompt)
     db.add(persona)
     await db.commit()
