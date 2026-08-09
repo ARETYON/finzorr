@@ -14,7 +14,10 @@ from sqlalchemy import delete, func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
+from app.core.config import settings
+from app.core.logging import log
 from app.core.pagination import Page, page_params
+from app.core.tasks import spawn
 from app.db.session import get_db
 from app.models.chat_session import ChatSession
 from app.models.feedback import Feedback
@@ -300,4 +303,38 @@ async def submit_feedback(
     )
     db.add(row)
     await db.commit()
+    # Close the loop into LangSmith: attach the rating to the turn's exact
+    # trace. Fire-and-forget, guarded, swallow-everything — a thumbs-down
+    # must never 500, and out-of-band messages (ls_run_id NULL) no-op.
+    if (
+        settings.LANGSMITH_TRACING
+        and settings.LANGSMITH_API_KEY
+        and message.ls_run_id is not None
+        and body.rating != 0
+    ):
+        spawn(
+            _send_langsmith_feedback(
+                message.ls_run_id, body.rating, body.comment, str(message_id)
+            ),
+            name="feedback.langsmith",
+        )
     return FeedbackCreateOut(id=str(row.id))
+
+
+async def _send_langsmith_feedback(
+    run_id: uuid.UUID, rating: int, comment: str | None, message_id: str
+) -> None:
+    """Best-effort: run_id == trace_id for a root run, so the call batches."""
+    try:
+        from langsmith import Client
+
+        Client().create_feedback(
+            run_id=run_id,
+            key="user_score",
+            score=1 if rating > 0 else 0,
+            comment=comment,
+            trace_id=run_id,
+            source_info={"message_id": message_id},
+        )
+    except Exception as exc:  # noqa: BLE001
+        log.warning("feedback.langsmith_failed", error=str(exc))

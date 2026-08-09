@@ -121,10 +121,19 @@ async def extract_and_store(user_id: str, user_msg: str, reply: str) -> int:
         return 0
 
 
+@traceable(
+    run_type="retriever",
+    name="memory.recall",
+    # recalled personal facts become searchable in LangSmith — cap exposure
+    process_outputs=lambda facts: {"hits": len(facts), "preview": [f[:60] for f in facts[:2]]},
+)
 async def recall(user_id: str, query: str) -> list[str]:
     """Top-k facts relevant to the incoming message (best-effort)."""
+    from app.core.trace import mark
+
     try:
         store = _store()
+        mark(backend="store" if store is not None else "qdrant")
         if store is not None:
             hits = await store.asearch((_NAMESPACE, user_id), query=query, limit=RECALL_TOP_K)
             return [

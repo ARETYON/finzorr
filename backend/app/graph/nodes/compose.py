@@ -99,6 +99,13 @@ async def compose_node(state: AssistantState) -> AssistantState:
             merged_chart = chart
             break
 
+    from app.core.trace import mark
+
+    mark(
+        steps=len(outputs),
+        citations=len(merged_citations),
+        sources=len(merged_sources),
+    )
     plan_len = len(state.get("plan_steps", [])) or len(outputs)
     emit_frame(
         {
@@ -134,6 +141,9 @@ async def compose_node(state: AssistantState) -> AssistantState:
         )
         final = done.text
     except Exception as exc:  # noqa: BLE001 — degrade to raw step outputs
+        from app.core.trace import tag as _tag
+
+        _tag("degraded:compose_fallback")
         log.error("node.compose.error", error=str(exc))
         # renumbered texts here too, or the fallback answer has colliding markers
         final = "\n\n---\n\n".join(renumbered_texts)

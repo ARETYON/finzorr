@@ -23,6 +23,8 @@ Full architecture: [`PROJECT_PLAN.md`](./PROJECT_PLAN.md).
 
 ---
 
+Security posture: see [SECURITY_REVIEW.md](SECURITY_REVIEW.md) (OWASP LLM Top-10 disposition).
+
 ## Run locally (dev)
 
 Prerequisites: Docker Desktop, [uv](https://docs.astral.sh/uv/), Node 20+, and

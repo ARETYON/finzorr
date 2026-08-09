@@ -47,6 +47,11 @@ async def spec_runner_node(state: AssistantState) -> AssistantState:
         except Exception as exc:  # noqa: BLE001 — one branch must not kill the fan-out
             log.error("parallel.branch_failed", route=route, error=str(exc))
             out = {"final_text": f"(the {route} step failed)", "step_error": True}
+    from app.core.trace import mark, tag
+
+    mark(branch_route=route)
+    if out.get("step_error"):
+        tag("degraded:branch_failed")
     record: dict[str, Any] = {
         "step_index": index,
         "route": route,

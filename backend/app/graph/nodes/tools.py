@@ -259,6 +259,10 @@ async def tools_exec_node(state: AssistantState) -> AssistantState:
             # Re-runs from the top on resume; interrupt() then RETURNS the
             # user's decision instead of raising. Code above this point must
             # stay side-effect-free.
+            from app.core.trace import mark, tag
+
+            tag("hitl:parked")
+            mark(hitl_tools=[str(c.get("name", "")) for c in sensitive])
             decision = interrupt(
                 {
                     "tools": [
@@ -269,6 +273,7 @@ async def tools_exec_node(state: AssistantState) -> AssistantState:
             )
             approved = bool(decision)
             decline_message = _DECLINED
+            mark(hitl_decision="approved" if approved else "declined")
 
     sensitive_ids = {str(c.get("id", "")) for c in sensitive}
     to_run = (

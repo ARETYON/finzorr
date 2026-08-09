@@ -14,9 +14,11 @@ import io
 import uuid
 
 import fitz  # PyMuPDF
+from langsmith import traceable
 
 from app.core.config import settings
 from app.core.logging import log
+from app.core.trace import mark
 from app.rag.embeddings import embed_texts
 from app.rag.vector_store import upsert_chunks
 
@@ -204,19 +206,92 @@ def extract_any(filename: str, data: bytes) -> LabeledPages:
     raise UnsupportedDocumentError(f"unsupported file type: {filename}")
 
 
+_LOADERS = {
+    ".pdf": "pymupdf",
+    ".docx": "python-docx",
+    ".pptx": "python-pptx",
+    ".xlsx": "openpyxl",
+    ".xls": "xlrd",
+}
+
+
+def _loader_for(filename: str) -> str:
+    lower = filename.lower()
+    for ext, loader in _LOADERS.items():
+        if lower.endswith(ext):
+            return loader
+    return "plain-text"
+
+
+@traceable(
+    run_type="parser",
+    name="extract",
+    process_outputs=lambda pages: {
+        "pages": len(pages),
+        "labels": [label for label, _ in pages][:20],
+        "total_chars": sum(len(t) for _, t in pages),
+    },
+)
+def _extract_traced(filename: str, data: bytes) -> LabeledPages:
+    mark(loader=_loader_for(filename))
+    return extract_any(filename, data)
+
+
+@traceable(
+    run_type="parser",
+    name="split",
+    process_inputs=lambda inputs: {"pages": len(inputs.get("pages", [])),
+                                   "filename": inputs.get("filename", "")},
+    process_outputs=lambda chunks: {
+        "chunks": len(chunks),
+        "chunk_chars": CHUNK_CHARS,
+        "overlap": CHUNK_OVERLAP,
+    },
+)
+def _split_traced(pages: LabeledPages, filename: str) -> list[dict[str, str]]:
+    return chunk_pages(pages, filename)
+
+
+@traceable(run_type="chain", name="document.ingest", tags=["rag", "ingest"])
 async def ingest_document(
     user_id: uuid.UUID, doc_id: uuid.UUID, filename: str, data: bytes
 ) -> int:
-    """Extract (any supported type), chunk, embed, upsert. Returns chunk count."""
-    pages = await asyncio.to_thread(extract_any, filename, data)
-    chunks = chunk_pages(pages, filename)
+    """Extract (any supported type), chunk, embed, upsert. Returns chunk count.
+
+    A mid-loop failure (embed outage, upsert error) must not strand the
+    batches already upserted: the router marks the doc `failed` with
+    chunk_count=NULL, its delete path then only clears batch 0, and a
+    re-upload mints a NEW doc id — so ingest-time cleanup is the only
+    chance to remove them.
+    """
+    mark(filename=filename, format=filename.rsplit(".", 1)[-1].lower(), bytes=len(data))
+    pages = await asyncio.to_thread(_extract_traced, filename, data)
+    chunks = _split_traced(pages, filename)
     if not chunks:
         return 0
     total = 0
-    for start in range(0, len(chunks), _EMBED_BATCH):
-        batch = chunks[start : start + _EMBED_BATCH]
-        vectors = await embed_texts([c["text"] for c in batch])
-        # stable ids need a per-batch offset baked into doc_id ordering
-        total += await upsert_chunks(str(user_id), f"{doc_id}:{start}", batch, vectors)
+    attempted_batches: list[str] = []
+    try:
+        for start in range(0, len(chunks), _EMBED_BATCH):
+            batch = chunks[start : start + _EMBED_BATCH]
+            # record BEFORE the attempt — a failed upsert's server-side
+            # state must be assumed written, not guessed clean
+            attempted_batches.append(f"{doc_id}:{start}")
+            vectors = await embed_texts([c["text"] for c in batch])
+            total += await upsert_chunks(str(user_id), f"{doc_id}:{start}", batch, vectors)
+    except Exception:
+        from app.rag.vector_store import delete_document as qdrant_delete
+
+        for batch_key in attempted_batches:
+            try:
+                await qdrant_delete(str(user_id), batch_key)
+            except Exception as cleanup_exc:  # noqa: BLE001 — best-effort
+                log.warning(
+                    "document.orphan_cleanup_failed",
+                    doc_id=str(doc_id),
+                    batch=batch_key,
+                    error=str(cleanup_exc),
+                )
+        raise
     log.info("document.ingested", doc_id=str(doc_id), chunks=total, pages=len(pages))
     return total

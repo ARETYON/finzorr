@@ -70,7 +70,7 @@ A ChatGPT-shaped general assistant:
   delete / resume anytime, full history reload per thread. First-class UX, not an
   afterthought.
 - **General Q&A by default** — any question, any topic (`general_chat` route).
-- **File upload + analysis** — upload PDF/Word/PowerPoint/Excel/CSV, ask questions about it, get cited answers (`file · p.N` / `slide N` / `sheet:Name`); the router knows the user's uploads by name, so natural content questions reach them without magic words.
+- **File upload + analysis** — upload PDF/Word/PowerPoint/Excel/CSV, ask questions about it, get cited answers (`file · p.N` / `slide N` / `sheet:Name`); the router knows the user's uploads by name, so natural content questions reach them without magic words; SMALL documents (≤8 chunks) are read IN FULL when they match, so summaries never miss sections.
 - **Pluggable integrations** — MCP client (GitHub first, Gmail Phase 2) and a generic
   config-driven connector for the owner's local microservices.
 - **Finance as the first vertical** — NSE/BSE quotes and fundamentals, natural-language
@@ -594,6 +594,23 @@ flowchart LR
 
 ---
 
+**Tenant isolation (documents & memory).** Three layers: every vector chunk
+carries `tenant = user_id` at write; retrieval filters are built SERVER-SIDE
+from the authenticated session (`["glossary", user_id]` — never anything
+client-supplied) and seam-tested so a refactor can't silently widen them
+(`tests/test_rag_isolation.py`, incl. the dev `debug` pseudo-user getting
+glossary-only); the REST layer ownership-checks every list/read/delete.
+Single-collection payload-partitioned multitenancy is Qdrant's own
+recommended pattern; DB-enforced isolation (pgvector + Postgres RLS) is a
+deliberate Phase-2 upgrade option, not a gap. Failed ingests clean up their
+already-upserted batches (orphan vectors were unreachable by the delete
+path). **Inbound guard** (`app/core/guard.py`): observe-only jailbreak
+screening — an anchored pattern floor (eval-pinned to pass benign finance
+phrasing) plus an optional small-LLM tier (`GUARD_LLM_ENABLED`, default
+off); suspicious turns are tagged `guard:suspicious` in traces and logged,
+never blocked — enforcement waits for measured false-positive rates. Full
+OWASP-LLM Top-10 disposition: `SECURITY_REVIEW.md`.
+
 ## 16. Evaluation, observability & AI Launch Operations (all free/OSS)
 
 The full process an AI company runs to take an agent from "works on my machine" to a
@@ -646,9 +663,27 @@ flowchart TD
   — tools turn (`tool.get_quote`+`tool.get_historical_prices` under
   tools_exec), parallel turn (retriever under spec_runner), research turn
   (4× retriever under research_search, 4× `tool.read_url` under
-  research_read), and zero unnamed orphan roots remaining. Deliberately NOT
-  traced (design): scheduler briefing/price-alert jobs (no LLM — OTel+logs
-  own them), checkpointer writes, dev /debug endpoints. Privacy note: when enabled, prompts and outputs leave
+  research_read), and zero unnamed orphan roots remaining. Since the RAG/quality wave: the ingest pipeline is a first-class tree
+  (`document.ingest → extract → split → embed → build_vector_store`) and
+  retrieval a `qdrant.search` retriever run; degraded turns carry a
+  filterable `degraded` tag (set before advance clears step_error); nl2sql
+  exposes `sql.execute` (row counts only — never row data or the DSN) with
+  self-correction attempt marks; HITL parks/decisions are tagged
+  (`hitl:parked`, approved/declined) and resume roots carry turn_id/user_id;
+  the planner marks `llm` vs `fallback` (an LLM-router outage is now a
+  metric, not a mystery); `memory.recall` is a retriever run (outputs
+  truncated — personal facts stay capped); cancel/timeout/abandon exits are
+  `turn.salvage` chains tagged by reason; research stages carry
+  sub-question/source/page counts; watchlist mutations are
+  `memory.apply_actions` tool runs; the daily briefing is a
+  `scheduler.briefing` chain. 👍/👎 feedback closes the loop INTO LangSmith:
+  each turn's root run id is pre-assigned and persisted on the Message row,
+  and a rating fires `create_feedback` onto the exact trace (fire-and-forget,
+  never blocks the endpoint; comment text leaves the machine when tracing is
+  on — noted here deliberately). A research CachePolicy HIT shows as the
+  research_search node being ABSENT from the tree — that absence IS the
+  cache signal. Deliberately NOT traced (design): price-alert sweeps (pure
+  numeric, would be noise), checkpointer writes, dev /debug endpoints. Privacy note: when enabled, prompts and outputs leave
   the machine — keep it off if that matters; keys live in gitignored `.env`
   only. Complements (does not replace) the OTel/Phoenix spans.
 - **UptimeRobot** (free) pings `/healthz` on UAT + PROD, email alerts, free public
@@ -658,6 +693,13 @@ flowchart TD
 - **Human feedback loop:** 👍/👎 on every answer → `feedback` table (with route +
   citations) → export endpoint → thumbs-down rows become the hardest golden-dataset
   items. The wheel turns weekly.
+
+**Drift detection (live, local):** `scripts/drift_watch.py` re-runs every
+deterministic eval daily (routing, injection, plan mechanics, RAG retrieval
+hit-rate), stores scores in `drift/`, and exits 1 with ALERT lines on any
+regression versus the previous run — wired for cron locally; the prod cron
+is documented in DEPLOYMENT_PLAN.md. LangSmith tracing is pinned OFF inside
+eval/drift runs so daily habits can't leak traces.
 
 **PLANNED (Phase 2):** LLM-as-judge as a calibrated *hard* release gate (pairwise,
 bias-aware — position/verbosity/self-preference — validated against ~100 human-labeled
@@ -1016,6 +1058,13 @@ Every code-reachable item on both reviewers' published paths shipped in §19.10:
   judge as an enforced gate (exit 1 below the floor), 15 prompts across
   single-step-when-simple / decomposition-order / parallel-independence
   rubrics; record the mean + model id in §19.10 alongside the run date.
+- **Before every release wave (local):** `uv run python -m evals.rag_eval
+  --min-hit-rate 0.9` (deterministic retrieval gate over the golden dataset;
+  CI has no Qdrant/Ollama, so this is a local gate by design) and
+  `--judge --min-score 7` for the faithfulness axis. Latest recorded run:
+  15/15 retrieval (100%), faithfulness 8.2/10 (qwen2.5:14b, 2026-08-09).
+- **Daily (cron):** `uv run python scripts/drift_watch.py` — alerts on any
+  eval regression.
 - **Before every push:** CI's EXACT marker-selected commands, not just the full
   suite — `pytest tests/ -q -m sanity --cov=app --cov-fail-under=45` then
   `pytest tests/ -q -m integration --cov=app --cov-append --cov-fail-under=70`
@@ -1113,6 +1162,10 @@ The complete reasoning record for the three post-build improvement waves. Each e
 61. **Tracing completeness — agent-to-agent and every complex flow.** *What:* an execution-path audit found six blind spots below the industry-standard bar and all were closed at choke points: (1) individual tool calls invisible inside the opaque `tools_exec` node → `@traceable(run_type="tool")` on the dispatcher with dynamic `tool.<name>` naming via `langsmith_extra` (one edit covers every registered tool incl. MCP + microservice), and research's page-reads rerouted through the dispatcher — gaining its validation and 100s timeout they previously bypassed; (2) the vision path produced NO trace (own OpenAI-compatible client bypassing the LLM choke point) → `vision-turn` chain + `vision.describe_image` llm run with usage, the image payload stripped from inputs; (3) fire-and-forget memory extraction and auto-title surfaced as bare unnamed `llm.call` roots → named `memory.extract`/`chat.auto_title` chains; (4) scheduled and resumed turns indistinguishable from human chat → `origin` threaded through run_turn/resume_turn into tags (`chat`/`scheduled`/`resume`) with user_id/turn_id metadata as log-join keys; (5) searches and embeds invisible → `retriever` runs on core web_search (per research sub-question, inside parallel branches) and `embedding` runs on the Ollama embed choke point; (6) run-input noise → `process_inputs` drops callback reprs and the full tool-schema list. *Why:* the user asked "does tracing handle agent-to-agent and all complex flows?" — the honest answer was no: a trace that shows a 100-second `tools_exec` without saying WHICH tool ate the time, or an image turn that never appears at all, fails the purpose of tracing. *How:* choke-point discipline (6 decorators cover ~20 call paths — no per-tool or per-node edits); live-verified across four flows with nesting confirmed (`tool.get_quote` under tools_exec, 4× retriever under research_search, 4× `tool.read_url` under research_read, retriever under a parallel branch, zero unnamed orphan roots); the never-raise dispatcher contract is preserved — the `Error:` output prefix, not run status, is the failure signal, stated in the run's docstring.
 
 62. **Document RAG completed: the router finally KNOWS the user's uploads — plus PPTX/XLSX/XLS support and paperclip documents.** *What:* (the headline bug, found by the user live) the supervisor planner had no idea uploads existed — routing to `rag` required magic words ("my pdf", "uploaded"), so a natural content question after uploading a report ("what was Q3 revenue?") went to web_search/general_chat and never opened the document. Fixed at three layers: the turn loads the user's ready upload filenames (one indexed query, ≤20), the planner prompt names them with "questions answerable from them → rag", and a deterministic keyword floor routes to rag whenever the message contains an upload's filename stem (≥4 chars) — so even a planner outage lands right. New formats: PPTX (python-pptx, slide per pseudo-page), XLSX (openpyxl read-only) and legacy XLS (xlrd) with one pseudo-page per SHEET and the CSV-style `col=value` flattening; legacy .ppt gets an actionable "save as .pptx" rejection. The extractor seam now returns LABELED pages, so citations read naturally per format: `report.pdf · p.3`, `deck.pptx · slide 4`, `book.xlsx · sheet:Revenue`, `note.docx · §2`. The chat paperclip accepts documents too — a picked doc uploads through the Documents pipeline and pre-fills `Regarding "name":` so the floor guarantees rag routing; images keep the vision path. *Why:* the user's requirement was "upload anything and ask anything" — the ingestion machinery mostly existed (PDF/DOCX/CSV/TXT/MD were already end-to-end), but a RAG index the router never consults is a feature that doesn't exist from the user's chair. *How:* live-verified on the dev stack — "What was Zentara's total revenue?" (no document words) routed rag and cited `zentara-q3.pdf`; a spreadsheet question answered 37.5 citing `margins.xlsx · sheet:Margins`. Also fixed while shipping: an order-dependent test flake (the real-lifespan test's scheduler tick cancelled mid-query and poisoned the shared asyncpg pool for later tests — tick bodies stubbed, defensive pool disposal at fixture setup, and LangSmith pinned OFF for the whole suite after the local .env's tracing leaked live trace posts into test runs). 302 tests, 8× green under randomized order.
+
+63. **RAG hardening + full reading + trace completeness + quality/safety wave (7 user-approved items; plan adversarially reviewed TWICE before execution).** *What:* (1) tenant isolation regression-tested at the retrieval seam — filter construction proven exactly `[glossary, authenticated_user]` incl. the dev `debug` pseudo-user getting glossary-only (seam tests; Qdrant-side enforcement stays the live two-user smoke, honestly scoped since CI has no Qdrant); plus the orphan-vector bug fixed: failed ingests now clean up their already-upserted batches (they were unreachable forever — failed docs carry chunk_count=NULL and re-uploads mint new ids). (2) SMALL documents (≤8 chunks) are read IN FULL when they match — best-scoring doc only, node-local (never in graph state — checkpointer/Send-size safety), extraction in a thread, ownership-filtered lookup, one block list feeding both excerpts and citations so `[n]` markers can't desync with compose's renumbering, 12k char cap, zero-doc users take the byte-identical legacy path (pinned by test). (3) The user-requested LangSmith ingest tree: `document.ingest → extract(parser, loader-tagged) → split → embed → build_vector_store`, retrieval as `qdrant.search` retriever runs — with payload hygiene (counts, never row/vector data). (4) Eleven per-use-case trace upgrades: filterable `degraded` tags from ONE edit in the shared node wrapper (fires before advance clears step_error; GraphInterrupt passes through untouched — test-pinned); `sql.execute` with shaped outputs + self-correction marks; the 👍/👎 loop closed INTO LangSmith (pre-assigned root run ids persisted on Message rows via one migration, `create_feedback` fire-and-forget with never-500 + rating-0-skip + NULL-no-op all test-pinned); HITL park/decision tags; planner `llm|fallback` marks (an LLM-router outage was previously invisible); `memory.recall` retriever runs (truncated outputs — personal facts stay capped); `turn.salvage` chains tagged by reason (cancel/ws_error/timeout/parked_abandoned); research stage counts; `memory.apply_actions` tool runs; `scheduler.briefing` chains (adopting a previously-orphaned retriever run); cache-hit-absence documented. (5) RAG answer-quality eval over a 15-item golden dataset: deterministic retrieval hit-rate as a LOCAL release gate (CI has no Qdrant/Ollama — the round-1 review caught the plan's one false claim of CI-gating; no fake-embed mode, that would measure nothing) — first recorded run 15/15 (100%), faithfulness judge 8.2/10 vs the 7 floor. (6) Daily drift watch: subprocess-runs every deterministic eval (avoiding a mypy-strict transitive pull the round-2 review caught), JSON history, ALERT+exit-1 on regression, tracing pinned off inside; first run recorded routing 94% / injection 100% / plan 100% / rag 100%. (7) Observe-ONLY jailbreak guard: anchored pattern floor + optional small-LLM tier (default off), suspicious turns tagged `guard:suspicious` — proven to hand the graph IDENTICAL inputs (round-2's M8 test); its eval cases are a dedicated curated list because sweeping the existing fence-escape payloads through it would have turned the 100% injection gate red by construction (round-2's M4 catch). Plus `SECURITY_REVIEW.md` — the full OWASP-LLM Top-10 disposition with code references. *Why:* the user asked three questions in sequence — is my document data private per user, is my tracing complete for every flow, and are the industry safety practices (evals, drift, guard, responsible-AI auditability) covered — and each honest answer was "mostly, with these specific gaps"; this wave closes every named gap without regressing the 9.0-scored machine (round 2's whole mandate: behavioral invariants pinned per test — large docs, zero-doc users, benign guard traffic, resumed turns all byte-identical). *How:* two adversarial plan reviews before a line of code (round 1: mechanics + the false CI claim; round 2: quality-regression + M1–M8), execution in the reviewed order, every change with same-commit tests. Suite grew 319 → 330+; all gates green.
+
+
 
 ---
 

@@ -8,6 +8,8 @@ diminishing returns.
 from dataclasses import dataclass, field
 from typing import Any
 
+from langsmith import traceable
+
 from app.ai.base import SystemMessage, UserMessage
 from app.ai.completion import complete
 from app.core.logging import log
@@ -73,8 +75,10 @@ def rows_preview(result: ExecutionResult) -> list[dict[str, Any]]:
     return result.rows[:NARRATION_ROWS]
 
 
+@traceable(run_type="chain", name="nl2sql.agent")
 async def run_query(question: str) -> NL2SQLResult:
     """Generate + validate + execute with one error-fed retry. Never raises."""
+    from app.core.trace import mark
     error_hint = ""
     last_sql = ""
     error = "no attempt completed"
@@ -94,6 +98,7 @@ async def run_query(question: str) -> NL2SQLResult:
             validated = validate(last_sql)
             result = await execute_sql(validated)
             log.info("nl2sql.success", attempt=attempt, rows=len(result.rows))
+            mark(attempts=attempt, self_corrected=attempt > 1, success=True)
             return NL2SQLResult(success=True, sql=validated, result=result, attempts=attempt)
         except Exception as exc:  # noqa: BLE001 — includes SQLValidationError
             error = f"{type(exc).__name__}: {exc}"
@@ -102,4 +107,5 @@ async def run_query(question: str) -> NL2SQLResult:
                 f"\nYour previous attempt failed.\nPrevious SQL: {last_sql}\n"
                 f"Error: {error}\nFix the problem and try again."
             )
+    mark(attempts=MAX_ATTEMPTS, success=False, last_error=error[:200])
     return NL2SQLResult(success=False, sql=last_sql, error=error, attempts=MAX_ATTEMPTS)

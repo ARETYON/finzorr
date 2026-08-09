@@ -35,4 +35,7 @@ class Message(Base):
     route: Mapped[str | None] = mapped_column(String(32), nullable=True)
     tool_calls: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
     citations: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
+    # LangSmith root-run id for this turn — lets a 👍/👎 attach to the exact
+    # trace; NULL for out-of-band persists (cancel/timeout) and tracing-off
+    ls_run_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

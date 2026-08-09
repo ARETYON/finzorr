@@ -87,6 +87,10 @@ class Settings(BaseSettings):
     LANGSMITH_PROJECT: str = "finzorr"
     LANGSMITH_ENDPOINT: str = ""  # empty = https://api.smith.langchain.com
 
+    # --- Inbound guard (observe-only screening; enforcement is future work) ---
+    # The optional LLM tier adds up to ~2s per turn — pattern floor is free
+    GUARD_LLM_ENABLED: bool = False
+
     # --- Web search ---
     TAVILY_API_KEY: str = ""
     SEARXNG_URL: str = ""

@@ -8,6 +8,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
+from langsmith import traceable
 from qdrant_client import AsyncQdrantClient, models
 
 from app.core.config import settings
@@ -59,8 +60,18 @@ class Hit:
     title: str
     locator: str  # e.g. "p.4" or "glossary"
     tenant: str
+    doc_id: str = ""  # base id before the :batch suffix; "" for glossary/memfacts
 
 
+@traceable(
+    run_type="tool",
+    name="build_vector_store",
+    process_inputs=lambda inputs: {
+        "tenant": inputs.get("tenant", ""),
+        "doc_id": inputs.get("doc_id", ""),
+        "chunks": len(inputs.get("chunks", [])),
+    },
+)
 async def upsert_chunks(
     tenant: str,
     doc_id: str,
@@ -81,6 +92,15 @@ async def upsert_chunks(
     return len(points)
 
 
+@traceable(
+    run_type="retriever",
+    name="qdrant.search",
+    process_inputs=lambda inputs: {
+        "tenants": inputs.get("tenants", []),
+        "top_k": inputs.get("top_k", 6),
+        "min_score": inputs.get("min_score", 0.4),
+    },
+)
 async def search(
     vector: list[float], tenants: list[str], top_k: int = 6, min_score: float = 0.4
 ) -> list[Hit]:
@@ -102,6 +122,7 @@ async def search(
             title=str((p.payload or {}).get("title", "")),
             locator=str((p.payload or {}).get("locator", "")),
             tenant=str((p.payload or {}).get("tenant", "")),
+            doc_id=str((p.payload or {}).get("doc_id", "")).split(":")[0],
         )
         for p in response.points
     ]

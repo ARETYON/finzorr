@@ -75,6 +75,9 @@ async def research_plan_node(state: AssistantState) -> AssistantState:
         subs = parsed[:MAX_SUBQUESTIONS] or [question]
     except Exception as exc:  # noqa: BLE001 — degrade to single-question mode
         log.warning("research.plan_failed", error=str(exc))
+    from app.core.trace import mark
+
+    mark(subs=len(subs), plan_degraded=subs == [question])
     return {"research_subs": subs, "route": "research"}
 
 
@@ -95,6 +98,13 @@ async def research_search_node(state: AssistantState) -> AssistantState:
                 sources.append(
                     {"sub": sub, "title": hit.title, "url": hit.url, "snippet": hit.snippet}
                 )
+    from app.core.trace import mark
+
+    mark(
+        sources=len(sources),
+        searches=len(subs),
+        failed_searches=sum(isinstance(r, BaseException) for r in results),
+    )
     return {"research_sources": sources}
 
 
@@ -111,6 +121,9 @@ async def research_read_node(state: AssistantState) -> AssistantState:
     page_texts = [
         p[:_PAGE_CHARS] for p in pages if isinstance(p, str) and not p.startswith("Error:")
     ]
+    from app.core.trace import mark
+
+    mark(pages_read=len(page_texts), pages_attempted=len(to_read))
     return {"research_pages": page_texts}
 
 
@@ -141,6 +154,9 @@ async def research_synthesize_node(state: AssistantState) -> AssistantState:
     if not sources:
         # every search failed upstream — synthesizing a "report" grounded in
         # zero sources would be confident fiction; refuse and flag instead
+        from app.core.trace import tag
+
+        tag("degraded:no_sources")
         log.error("research.no_sources")
         result["final_text"] = (
             "Research couldn't gather any sources for this question — "

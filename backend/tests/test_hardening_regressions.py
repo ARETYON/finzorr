@@ -303,20 +303,21 @@ class TestTurnDeadline:
         recorded: list[str] = []
 
         async def fake_record(
-            _sid: uuid.UUID, _msg: str, text: str, turn_id: str = ""
+            _sid: uuid.UUID, _msg: str, text: str, turn_id: str = "", **_k: Any
         ) -> None:
             recorded.append(text)
 
         async def fake_instructions(*_a: Any) -> str:
             return ""
 
-        async def fake_recall(*_a: Any) -> list[str]:
+        async def fake_recall(*_a: Any, **_k: Any) -> list[str]:
             return []
 
         monkeypatch.setattr(turn, "get_graph", fake_get_graph)
         monkeypatch.setattr(turn, "record_out_of_band_turn", fake_record)
         monkeypatch.setattr(turn, "_load_instructions", fake_instructions)
         monkeypatch.setattr(turn, "_load_history", fake_recall)
+        monkeypatch.setattr(turn, "_load_document_names", fake_recall)
         monkeypatch.setattr("app.memory.facts.recall", fake_recall)
         from app.core.config import settings
 

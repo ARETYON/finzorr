@@ -2,6 +2,7 @@
 
 import io
 from pathlib import Path
+from typing import Any
 
 import fitz  # PyMuPDF
 import pytest
@@ -249,3 +250,48 @@ def test_docx_sections_labeled() -> None:
     pages = extract_any("note.docx", buf.getvalue())
     assert pages[0][0] == "§1"
     assert "hello world" in pages[0][1]
+
+
+# ------------------------------------------------ orphan cleanup on failure
+
+
+async def test_failed_ingest_cleans_up_attempted_batches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Embed dies on batch 2 -> the batch-0 vectors already upserted (and the
+    attempted batch-1 key) are best-effort deleted before the error
+    propagates — otherwise they orphan forever (failed docs have
+    chunk_count=NULL and re-uploads mint a new doc id)."""
+    import uuid as uuid_module
+
+    from app.documents import ingest as ingest_mod
+
+    calls = {"embed": 0}
+    deleted: list[tuple[str, str]] = []
+
+    async def flaky_embed(texts: list[str]) -> list[list[float]]:
+        calls["embed"] += 1
+        if calls["embed"] >= 2:
+            raise RuntimeError("embedder down")
+        return [[0.0] * 3 for _ in texts]
+
+    async def fake_upsert(tenant: str, doc_id: str, batch: list[Any], vectors: list[Any]) -> int:
+        return len(batch)
+
+    async def record_delete(tenant: str, doc_id: str) -> None:
+        deleted.append((tenant, doc_id))
+
+    monkeypatch.setattr(ingest_mod, "embed_texts", flaky_embed)
+    monkeypatch.setattr(ingest_mod, "upsert_chunks", fake_upsert)
+    monkeypatch.setattr("app.rag.vector_store.delete_document", record_delete)
+
+    user_id, doc_id = uuid_module.uuid4(), uuid_module.uuid4()
+    # >16 chunks => at least 2 embed batches (1200-char chunks from 1 page)
+    big_page = "word " * 8000
+    with pytest.raises(RuntimeError, match="embedder down"):
+        await ingest_mod.ingest_document(user_id, doc_id, "big.txt", big_page.encode())
+
+    assert deleted, "attempted batches must be cleaned up"
+    assert all(t == str(user_id) for t, _ in deleted)
+    assert f"{doc_id}:0" in [d for _, d in deleted]  # the upserted batch
+    assert f"{doc_id}:16" in [d for _, d in deleted]  # the attempted batch

@@ -50,12 +50,14 @@ def _origin_allowed(websocket: WebSocket) -> bool:
 
 
 async def _persist_partial(
-    session_id: uuid.UUID, user_msg: str, partial: str, turn_id: str = ""
+    session_id: uuid.UUID, user_msg: str, partial: str, turn_id: str = "", reason: str = "cancel"
 ) -> None:
     """Persist a cancelled turn (DB + checkpointer) so UI and model agree."""
     text = f"{partial}\n\n_(stopped by user)_" if partial.strip() else "_(stopped by user)_"
     try:
-        await record_out_of_band_turn(session_id, user_msg, text, turn_id=turn_id)
+        await record_out_of_band_turn(
+            session_id, user_msg, text, turn_id=turn_id, reason=reason
+        )
     except Exception as exc:  # noqa: BLE001 — cancellation cleanup must not raise
         log.warning("ws.cancel.persist_failed", error=str(exc))
 
@@ -175,6 +177,7 @@ class _Connection:
                         user_msg,
                         "".join(partial) + "\n\n_(error — reply incomplete)_",
                         turn_id=turn_id,
+                        reason="ws_error",
                     )
             await release_turn(str(session_id))
             await self.send({"type": "error", "message": "assistant error — please retry"})

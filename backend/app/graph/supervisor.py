@@ -274,6 +274,16 @@ async def plan_and_route(state: AssistantState) -> AssistantState:
         # silently loses feed-forward, so referential tasks force sequential
         and not _steps_look_dependent(steps)
     )
+    # a planner outage is otherwise invisible: "keyword fallback" doubles as
+    # the no-reason default, so mark the true source explicitly
+    from app.core.trace import mark, tag
+
+    mark(
+        planner="llm" if decision.get("plan") else "fallback",
+        plan=[s["route"] for s in steps],
+        parallel=parallel,
+    )
+    tag(f"route:{steps[0]['route']}")
     return {
         "route": steps[0]["route"],
         "plan_steps": steps,

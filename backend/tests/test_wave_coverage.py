@@ -321,3 +321,83 @@ async def test_share_view_revoke_and_expiry(
     assert (
         await user_client.delete(f"/api/chat/sessions/{session_id}/share")
     ).status_code == 404
+
+
+# --------------------------------------------- feedback -> LangSmith (M6/M7)
+
+
+async def test_feedback_never_500s_when_langsmith_raises(
+    user_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.core.config import settings as cfg
+    from app.routers import chat as chat_router
+
+    session_id = await _create_session(user_client)
+    message_id = await _seed_exchange(session_id)
+    # force the guarded branch ON and make the sender explode
+    monkeypatch.setattr(cfg, "LANGSMITH_TRACING", True)
+    monkeypatch.setattr(cfg, "LANGSMITH_API_KEY", "test-key")
+
+    async def boom(*_a: Any, **_k: Any) -> None:
+        raise RuntimeError("langsmith down")
+
+    monkeypatch.setattr(chat_router, "_send_langsmith_feedback", boom)
+    # message has NULL ls_run_id (seeded directly) -> branch skips anyway;
+    # set one to exercise the spawn path
+    async with SessionLocal() as db:
+        msg = await db.get(Message, uuid.UUID(message_id))
+        assert msg is not None
+        msg.ls_run_id = uuid.uuid4()
+        await db.commit()
+
+    response = await user_client.post(
+        f"/api/chat/messages/{message_id}/feedback", json={"rating": 1}
+    )
+    assert response.status_code == 201  # never 500
+
+
+async def test_feedback_null_run_id_and_zero_rating_skip_langsmith(
+    user_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.core.config import settings as cfg
+    from app.routers import chat as chat_router
+
+    called: list[Any] = []
+
+    async def record(*a: Any, **_k: Any) -> None:
+        called.append(a)
+
+    monkeypatch.setattr(cfg, "LANGSMITH_TRACING", True)
+    monkeypatch.setattr(cfg, "LANGSMITH_API_KEY", "k")
+    monkeypatch.setattr(chat_router, "_send_langsmith_feedback", record)
+
+    session_id = await _create_session(user_client)
+    message_id = await _seed_exchange(session_id)  # ls_run_id NULL
+    r1 = await user_client.post(
+        f"/api/chat/messages/{message_id}/feedback", json={"rating": 1}
+    )
+    assert r1.status_code == 201
+    assert called == []  # NULL run id -> no LangSmith call
+
+    async with SessionLocal() as db:
+        msg = await db.get(Message, uuid.UUID(message_id))
+        assert msg is not None
+        msg.ls_run_id = uuid.uuid4()
+        await db.commit()
+    r2 = await user_client.post(
+        f"/api/chat/messages/{message_id}/feedback", json={"rating": 0}
+    )
+    assert r2.status_code == 201
+    assert called == []  # rating 0 -> skipped by design
+
+
+def test_sql_execution_output_shape_never_leaks_rows() -> None:
+    """M7: the trace view of a SQL result is counts only — no row payloads,
+    no DSN anywhere."""
+    from app.nl2sql.executor import ExecutionResult, shape_execution_output
+
+    shaped = shape_execution_output(
+        ExecutionResult(columns=["symbol", "pe"], rows=[{"symbol": "TCS", "pe": 28}] * 50)
+    )
+    assert shaped == {"row_count": 50, "columns": ["symbol", "pe"]}
+    assert "TCS" not in str(shaped.values())  # no row data

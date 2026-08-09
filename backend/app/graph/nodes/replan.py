@@ -52,6 +52,7 @@ async def replan_node(state: AssistantState) -> AssistantState:
     )
     budget = max(len(steps) - index, 1)
     revised: list[dict[str, str]] = []
+    revision_reason = ""
     try:
         raw = await complete(
             [
@@ -71,12 +72,17 @@ async def replan_node(state: AssistantState) -> AssistantState:
             overall_timeout_s=_REPLAN_TIMEOUT_S,
         )
         decision: dict[str, Any] = json.loads(raw) if raw.strip().startswith("{") else {}
+        revision_reason = str(decision.get("reason", ""))
         revised = validate_plan(decision.get("plan"), state["user_msg"])[:budget]
     except Exception as exc:  # noqa: BLE001 — no revision = early exit
         log.warning("replan.failed", error=str(exc))
 
+    from app.core.trace import mark, tag
+
+    mark(replan_reason=revision_reason[:200], revised=len(revised))
     result: AssistantState = {"needs_replan": False, "replan_count": 1, "step_error": False}
     if not revised:
+        tag("replan:empty")
         log.info("replan.empty_early_exit")
         result["plan_index"] = len(steps)
         return result

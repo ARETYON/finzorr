@@ -51,6 +51,14 @@ async def _auto_title(session_id: uuid.UUID, first_message: str) -> None:
             await db.commit()
 
 
+def _parse_run_id(raw: str) -> uuid.UUID | None:
+    """Tolerant: out-of-band persists carry no run id — NULL is fine."""
+    try:
+        return uuid.UUID(raw) if raw else None
+    except ValueError:
+        return None
+
+
 async def _already_persisted(turn_id: str) -> bool:
     """Idempotency check — the marker is set only AFTER a successful commit,
     so a graph-level retry of a failed write is never suppressed, while a
@@ -103,6 +111,7 @@ async def persist_node(state: AssistantState) -> AssistantState:
                     route=state.get("route"),
                     tool_calls=state.get("tool_calls"),
                     citations=state.get("citations"),
+                    ls_run_id=_parse_run_id(state.get("ls_run_id", "")),
                 )
             )
             session = await db.get(ChatSession, session_uuid)

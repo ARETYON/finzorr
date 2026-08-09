@@ -42,11 +42,15 @@ async def advance_node(state: AssistantState) -> AssistantState:
     # rescue the answer; after the budget is spent, stop marching a broken
     # plan forward and surface what happened honestly.
     if state.get("step_error", False):
+        from app.core.trace import tag
+
         if state.get("replan_count", 0) == 0:
             log.warning("plan.step_failed_replanning", step=index + 1)
+            tag("plan:replanning")
             return {**result, "needs_replan": True, "step_error": False}
         if next_index < len(steps):
             log.warning("plan.step_failed_early_exit", step=index + 1)
+            tag("plan:early_exit")
             return {**result, "plan_index": len(steps), "step_error": False}
         result["step_error"] = False  # budget spent on the last step: end normally
     if next_index < len(steps):

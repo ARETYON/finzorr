@@ -76,12 +76,24 @@ _degraded_retry_at = 0.0
 _store_retry_at = 0.0
 
 def traced[NodeF: Callable[..., Awaitable[Any]]](name: str, fn: NodeF) -> NodeF:
-    """Every node becomes a span — the graph is invisible to traces otherwise."""
+    """Every node becomes a span — the graph is invisible to traces otherwise.
+
+    Also tags the node's LangSmith run `degraded` when its output carries
+    `step_error` — BEFORE advance clears the flag, so degraded turns are a
+    filterable facet (`has(tags, "degraded")`) instead of a buried state
+    delta. Only on normal returns: a raise (incl. GraphInterrupt from HITL)
+    passes through untouched.
+    """
 
     @wraps(fn)
     async def wrapper(state: AssistantState) -> Any:
         with span("node", node=name):
-            return await fn(state)
+            result = await fn(state)
+        if isinstance(result, dict) and result.get("step_error"):
+            from app.core.trace import tag
+
+            tag("degraded", f"degraded:{name}")
+        return result
 
     return cast(NodeF, wrapper)
 

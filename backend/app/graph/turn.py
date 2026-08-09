@@ -101,11 +101,15 @@ async def _vision_turn(
         except Exception as exc:  # noqa: BLE001 — degrade gracefully
             log.error("vision.failed", error=str(exc))
             answer = "I couldn't analyze that image right now — please try again."
+    from langsmith import get_current_run_tree
+
+    vision_run = get_current_run_tree()
     out: AssistantState = {
         "session_id": str(session_id),
         "user_msg": f"{user_msg} [image attached]",
         "final_text": answer,
         "route": "general_chat",
+        "ls_run_id": str(vision_run.id) if vision_run is not None else "",
     }
     persisted = await persist_node(out)
     return {
@@ -127,16 +131,32 @@ async def _vision_turn(
 OnFrame = Callable[[dict[str, Any]], Awaitable[None]]
 
 
+@traceable(
+    run_type="chain",
+    name="turn.salvage",
+    process_inputs=lambda inputs: {
+        "session_id": str(inputs.get("session_id", "")),
+        "turn_id": inputs.get("turn_id", ""),
+        "reason": inputs.get("reason", ""),
+        "text_len": len(inputs.get("final_text", "") or ""),
+    },
+)
 async def record_out_of_band_turn(
-    session_id: uuid.UUID, user_msg: str, final_text: str, turn_id: str = ""
+    session_id: uuid.UUID,
+    user_msg: str,
+    final_text: str,
+    turn_id: str = "",
+    reason: str = "unknown",
 ) -> None:
     """Persist a turn that the graph did not finish (cancel/timeout) to BOTH
     stores: the DB (what the UI reloads) and the checkpointer thread (what
     the model remembers) — writing only one leaves a split-brain history.
     `turn_id` makes the write idempotent against a persist that already
     committed inside the graph before the cancel landed."""
+    from app.core.trace import tag
     from app.graph.nodes.persist import persist_node
 
+    tag(f"salvage:{reason}")
     await persist_node(
         {
             "session_id": str(session_id),
@@ -185,6 +205,15 @@ async def run_turn(
     """
     cid = new_correlation_id()
     turn_id = turn_id or uuid.uuid4().hex
+    # pre-assigned so the root trace id is known BEFORE the run — persisted
+    # on the Message row, it lets user feedback attach to the exact trace
+    root_run_id = uuid.uuid4()
+    # observe-only screening (BEFORE the vision branch so image turns are
+    # screened too): a suspicious verdict tags the trace and logs — it never
+    # blocks and never changes what the model sees
+    from app.core.guard import screen_message
+
+    guard_verdict = await screen_message(user_msg)
     if attachments:
         return await _vision_turn(session_id, user_id, user_msg, attachments)
     graph, has_checkpointer = await get_graph()
@@ -192,7 +221,11 @@ async def run_turn(
     user_documents = await _load_document_names(user_id)
     from app.memory.facts import extract_and_store, recall
 
-    memories = await recall(str(user_id), user_msg)
+    memories = await recall(
+        str(user_id),
+        user_msg,
+        langsmith_extra={"metadata": {"session_id": str(session_id), "turn_id": turn_id}},
+    )
     if memories:
         # Recalled facts were LLM-extracted from past user text — they are
         # personalization DATA, never instructions. Without this framing a
@@ -208,6 +241,7 @@ async def run_turn(
         "user_name": user_name,
         "user_msg": user_msg,
         "user_documents": user_documents,
+        "ls_run_id": str(root_run_id),
         "correlation_id": cid,
         "turn_id": turn_id,
         # explicit per-turn resets — only `messages` may accumulate
@@ -255,6 +289,8 @@ async def run_turn(
             origin=origin,
             user_id=str(user_id),
             turn_id=turn_id,
+            run_id=root_run_id,
+            extra_tags=["guard:suspicious"] if guard_verdict == "suspicious" else [],
         )
     except TimeoutError:
         return await _timeout_payload(session_id, user_msg, turn_id)
@@ -305,6 +341,7 @@ async def _clear_parked(graph: Any, config: dict[str, Any], session_id: uuid.UUI
                 parked_msg,
                 "_(approval request superseded by a new message)_",
                 turn_id=str(state.values.get("turn_id", "")),
+                reason="parked_abandoned",
             )
         else:
             await graph.aupdate_state(config, {"pending_tool_calls": []}, as_node="persist")
@@ -368,6 +405,8 @@ async def _drive_graph(
     origin: str = "chat",
     user_id: str = "",
     turn_id: str = "",
+    run_id: uuid.UUID | None = None,
+    extra_tags: list[str] | None = None,
 ) -> AssistantState:
     """Stream one graph invocation under the per-turn deadline."""
     out: AssistantState = {}
@@ -388,8 +427,10 @@ async def _drive_graph(
         "recursion_limit": 50,
         "run_name": "assistant-turn",
         "metadata": metadata,
-        "tags": [settings.APP_ENV, origin],
+        "tags": [settings.APP_ENV, origin, *(extra_tags or [])],
     }
+    if run_id is not None:
+        run_config["run_id"] = run_id  # honored by Pregel — the root trace id
     async with asyncio.timeout(settings.TURN_TIMEOUT_S):
         with span("turn", session_id=str(session_id)) as turn_span:
             async for mode, chunk in graph.astream(
@@ -431,7 +472,9 @@ async def _timeout_payload(
         "This request took longer than the per-turn limit and was stopped — "
         "please try a narrower question."
     )
-    await record_out_of_band_turn(session_id, user_msg, note, turn_id=turn_id)
+    await record_out_of_band_turn(
+        session_id, user_msg, note, turn_id=turn_id, reason="timeout"
+    )
     payload = _response_payload(session_id, {"final_text": note})
     payload["route_reason"] = "turn timeout"
     return payload

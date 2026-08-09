@@ -40,6 +40,7 @@ class AssistantState(TypedDict, total=False):
     user_name: str
     user_msg: str
     user_documents: list[str]  # ready upload filenames — routing awareness, per-turn
+    ls_run_id: str  # pre-assigned LangSmith root run id (feedback join); per-turn
     correlation_id: str
     turn_id: str  # idempotency key for persist (normal + out-of-band paths)
     hitl_enabled: bool  # checkpointer present -> sensitive tools may interrupt

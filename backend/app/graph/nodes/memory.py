@@ -11,6 +11,7 @@ import re
 import uuid
 from typing import Any
 
+from langsmith import traceable
 from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -84,6 +85,7 @@ async def _get_alerts(user_id: uuid.UUID) -> list[str]:
         return [f"{a.symbol} {a.direction} {a.target}" for a in result.scalars()]
 
 
+@traceable(run_type="tool", name="memory.apply_actions")
 async def _apply_actions(user_id: uuid.UUID, actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Idempotent watchlist mutations; per-action failures are isolated."""
     applied: list[dict[str, Any]] = []

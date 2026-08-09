@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import sqlglot
+from langsmith import traceable
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlglot import exp
@@ -119,6 +120,13 @@ class ExecutionResult:
     rows: list[dict[str, Any]]
 
 
+def shape_execution_output(result: "ExecutionResult") -> dict[str, Any]:
+    """Trace-safe view of a result: counts only — never row payloads, never
+    connection details (the RO DSN carries a password)."""
+    return {"row_count": len(result.rows), "columns": result.columns}
+
+
+@traceable(run_type="tool", name="sql.execute", process_outputs=shape_execution_output)
 async def execute(validated_sql: str) -> ExecutionResult:
     """Layer 5: run on the read-only engine with a hard timeout."""
 

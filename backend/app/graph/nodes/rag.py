@@ -21,6 +21,10 @@ from app.rag.vector_store import GLOSSARY_TENANT, Hit, search
 
 TOP_K = 6
 SEARCH_TIMEOUT_S = 5.0
+# A doc this small gets included IN FULL when it matches — "summarize my
+# report" must never miss sections because retrieval picked 6 chunks.
+SMALL_DOC_CHUNKS = 8
+_FULL_DOC_CHARS = 12_000
 
 register(
     AgentPrompt(
@@ -44,25 +48,92 @@ register(
 )
 
 
-def _format_excerpts(hits: list[Hit]) -> str:
-    blocks = []
-    for i, hit in enumerate(hits, start=1):
-        source = hit.title if hit.tenant == GLOSSARY_TENANT else f"{hit.title} · {hit.locator}"
-        blocks.append(
-            wrap_untrusted(hit.text, "excerpt", header_extra=f'[{i}] source="{source}"')
-        )
-    return "\n\n".join(blocks)
+# One block list feeds BOTH the excerpts and the citations — a single
+# enumeration so the [n] markers (which compose's renumbering later remaps
+# by literal string) can never desync between prompt and citation list.
+Block = tuple[str, str]  # (source label, text)
 
 
-def _citations(hits: list[Hit]) -> list[dict[str, Any]]:
+def _hit_blocks(hits: list[Hit]) -> list[Block]:
     return [
-        {
-            "marker": f"[{i}]",
-            "title": hit.title if hit.tenant == GLOSSARY_TENANT else f"{hit.title} · {hit.locator}",
-            "snippet": hit.text[:200],
-        }
-        for i, hit in enumerate(hits, start=1)
+        (
+            hit.title if hit.tenant == GLOSSARY_TENANT else f"{hit.title} · {hit.locator}",
+            hit.text,
+        )
+        for hit in hits
     ]
+
+
+def _format_excerpts(blocks: list[Block]) -> str:
+    return "\n\n".join(
+        wrap_untrusted(text, "excerpt", header_extra=f'[{i}] source="{source}"')
+        for i, (source, text) in enumerate(blocks, start=1)
+    )
+
+
+def _citations(blocks: list[Block]) -> list[dict[str, Any]]:
+    return [
+        {"marker": f"[{i}]", "title": source, "snippet": text[:200]}
+        for i, (source, text) in enumerate(blocks, start=1)
+    ]
+
+
+async def _expand_best_small_doc(
+    user_id: str, hits: list[Hit]
+) -> tuple[list[Block], bool]:
+    """If the best-scoring hit from the USER's tenant belongs to a small
+    document, replace that doc's excerpt blocks with its FULL labeled text
+    (node-local only — never enters graph state). Everything else keeps
+    excerpt behavior; any failure falls back to plain excerpts."""
+    blocks = _hit_blocks(hits)
+    try:
+        candidates = [h for h in hits if h.tenant == user_id and h.doc_id]
+        if not candidates:
+            return blocks, False
+        best = max(candidates, key=lambda h: h.score)
+
+        import uuid as uuid_module
+
+        from sqlalchemy import select
+
+        from app.db.session import SessionLocal
+        from app.models.document import Document
+
+        async with SessionLocal() as db:
+            row = (
+                await db.execute(
+                    select(Document).where(
+                        Document.id == uuid_module.UUID(best.doc_id),
+                        Document.user_id == uuid_module.UUID(user_id),
+                    )
+                )
+            ).scalar_one_or_none()
+        if row is None or (row.chunk_count or SMALL_DOC_CHUNKS + 1) > SMALL_DOC_CHUNKS:
+            return blocks, False
+
+        from app.documents.ingest import extract_any
+        from app.documents.storage import get_storage
+
+        data = await get_storage().load(row.storage_key)
+        pages = await asyncio.to_thread(extract_any, row.filename, data)
+
+        full_blocks: list[Block] = []
+        remaining = _FULL_DOC_CHARS
+        for label, text in pages:
+            clean = " ".join(text.split())
+            if not clean or remaining <= 0:
+                continue
+            piece = clean[:remaining]
+            remaining -= len(piece)
+            full_blocks.append((f"{row.filename} · {label}", piece))
+        if not full_blocks:
+            return blocks, False
+
+        kept = [b for h, b in zip(hits, blocks, strict=True) if h.doc_id != best.doc_id]
+        return full_blocks + kept, True
+    except Exception as exc:  # noqa: BLE001 — expansion is an upgrade, never a risk
+        log.warning("node.rag.expand_failed", error=str(exc))
+        return blocks, False
 
 
 async def rag_node(state: AssistantState) -> AssistantState:
@@ -86,6 +157,8 @@ async def rag_node(state: AssistantState) -> AssistantState:
         if not state.get("parallel_branch", False):
             emit_frame({"type": "token", "delta": t})
 
+    expanded = False
+    blocks: list[Block] = []
     if not hits:
         system = SystemMessage(
             content=(
@@ -95,11 +168,14 @@ async def rag_node(state: AssistantState) -> AssistantState:
             )
         )
     else:
-        system = SystemMessage(
-            content=with_instructions(
-                render_agent_prompt("rag_system", excerpts=_format_excerpts(hits)), state
+        blocks, expanded = await _expand_best_small_doc(user_id, hits)
+        prompt = render_agent_prompt("rag_system", excerpts=_format_excerpts(blocks))
+        if expanded:
+            prompt += (
+                "\n\nNOTE: one document above is included IN FULL (every "
+                "section) — you may summarize or answer about it end-to-end."
             )
-        )
+        system = SystemMessage(content=with_instructions(prompt, state))
     try:
         done = await stream(
             [system, UserMessage(content=task_for(state) + step_context(state))],
@@ -110,7 +186,7 @@ async def rag_node(state: AssistantState) -> AssistantState:
         return {
             "final_text": done.text,
             "route": "rag",
-            "citations": _citations(hits),
+            "citations": _citations(blocks),
             "sources": [
                 "finzorr glossary" if h.tenant == GLOSSARY_TENANT else "your documents"
                 for h in hits[:1]

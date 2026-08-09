@@ -10,6 +10,7 @@ import contextlib
 import uuid
 from datetime import UTC, datetime, time, timedelta, timezone
 
+from langsmith import traceable
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -102,6 +103,7 @@ async def _post_message(user_id: uuid.UUID, content: str, route: str) -> None:
         await db.commit()
 
 
+@traceable(run_type="chain", name="scheduler.briefing")
 async def _build_briefing(user_id: uuid.UUID, symbols: list[str]) -> str:
     from app.market_data.yfinance_provider import provider
 

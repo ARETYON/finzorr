@@ -34,9 +34,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
       - name: Lint (ruff)
-        run: uv run ruff check app/ tests/ alembic/ evals/
+        run: uv run ruff check app/ tests/ alembic/ evals/ scripts/
       - name: Typecheck (mypy --strict)
-        run: uv run mypy app/ tests/
+        run: uv run mypy app/ tests/ scripts/
       - name: Env-var parity (.env.example covers every Settings field)
         run: |
           uv run python - <<'EOF'
