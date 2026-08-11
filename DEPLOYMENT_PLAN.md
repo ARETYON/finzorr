@@ -452,15 +452,30 @@ of mistake that's easy to repeat on a fresh server if you don't know to
 look for it.
 
 ### 9.1 Disk exhaustion on the OVH server during initial setup
-Docker's build cache and layered images filled the server's disk during
-early setup/iteration, taking Postgres down with it (a database that can't
-write WAL is not a "slow" database, it's a stopped one). Fixed by
-reclaiming space (`docker system df` to see it, `docker builder prune -af`
-+ `docker image prune -af` to clear it — same commands as §6's Docker disk
-cleanup row). **Lesson**: a fresh VM's disk is usually smaller than you
-expect relative to how much Docker churns through it while you're actively
-iterating on a Dockerfile — check `df -h` and `docker system df` early and
-often during initial bring-up, not just after something breaks.
+The FIRST real image build attempt on the server failed outright on disk
+space — root cause identified precisely, not just worked around:
+`backend/Dockerfile`'s builder stage was installing `build-essential`
+(gcc/g++ plus ~50 transitive packages, ~336MB) even though it was never
+actually needed — every dependency that could plausibly require
+compilation (`psycopg[binary]`, `lxml`, `cryptography`, `pymupdf`) ships
+pre-built manylinux wheels for linux/amd64, confirmed via a clean local
+build showing zero compilation happening. That unnecessary C toolchain was
+specifically what pushed the first build over the server's disk limit.
+Fixed by dropping `build-essential` from the builder stage entirely — the
+image doesn't need `apt` in that stage at all. Separately, Docker's build
+cache and layered images continued to accumulate during iteration
+afterward (a database that can't write WAL is not a "slow" database, it's
+a stopped one) — reclaimed with `docker system df` to see it,
+`docker builder prune -af` + `docker image prune -af` to clear it (same
+commands as §6's Docker disk cleanup row). **Lesson**: don't just react to
+a disk-full error with "clear some space" — check whether something in the
+image is actually unnecessary weight first (a build stage installing a
+full compiler toolchain "just in case" is a common default that's often
+wrong once you actually check what the dependencies need); a fresh VM's
+disk is also usually smaller than you'd expect relative to how much Docker
+churns through it during active iteration, so check `df -h`/
+`docker system df` early and often during initial bring-up, not just after
+something breaks.
 
 ### 9.2 Missing `EMBED_OLLAMA_URL`/`OLLAMA_URL` — corpus/fundamentals seeding failed
 `prod.env` didn't set these two vars in an early version of `vm-bootstrap.sh`.
@@ -619,6 +634,37 @@ list needs EVERY exact origin the login button will ever be served from —
 apex domain and `www.` subdomain are not interchangeable to Google's
 origin check even if your own CORS/cookie handling treats them as
 equivalent; add both explicitly, don't assume one covers the other.
+
+### 9.11 The recovery script for one bug shipped with two bugs of its own
+`deploy/recover-embed-url.sh` (§9.2's fix for servers bootstrapped before
+`EMBED_OLLAMA_URL`/`OLLAMA_URL` were set) itself needed two follow-up fixes
+on the same day it was written, both caught by actually running it against
+a real server rather than just reading it back:
+1. It never exported `IMAGE_TAG` before invoking `docker compose` —
+   `docker-compose.prod.yml`'s `image:` line requires that variable to
+   parse AT ALL (`${IMAGE_TAG:?set IMAGE_TAG}`), for every invocation, not
+   just the final one `deploy.sh` itself sets up. Missed on the first pass
+   because it's easy to test the SQL/logic half of a recovery script
+   without noticing the compose-parsing half needs its own env var too.
+2. It ran `git pull` in whatever directory it happened to be invoked from,
+   not `/opt/finzorr` (the actual directory `vm-bootstrap.sh` manages and
+   the running stack actually uses) — so running it from a different
+   manual clone never touched the checkout that mattered, and a
+   just-pushed fix the script itself depended on (`wait-healthy.sh`) was
+   missing when it tried to call it. Fixed by having the script `git pull`
+   `/opt/finzorr` itself as its very first step, making it safe to invoke
+   from any directory.
+
+**Lesson**: this generalizes directly to §10's emergency manual-deploy
+procedure — any recovery/emergency script must (a) explicitly set every
+environment variable `docker compose` needs to even PARSE the compose
+file, not just the ones the script's own logic obviously touches, and (b)
+operate on the server's actual managed installation directory explicitly,
+never assume the invoker's current working directory happens to match it.
+A recovery script that only gets read-reviewed, never actually run against
+a real (or realistic) environment before being relied on, will very
+plausibly have its own bugs — test the rescue plan, not just the original
+fix.
 
 ---
 
