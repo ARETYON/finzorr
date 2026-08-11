@@ -24,9 +24,20 @@ from app.graph.graph import _pg_dsn  # noqa: SLF001 — intentional reuse, not a
 
 
 async def _setup() -> None:
+    from psycopg.rows import dict_row
     from psycopg_pool import AsyncConnectionPool
 
-    pool: Any = AsyncConnectionPool(_pg_dsn(), min_size=1, max_size=1, open=False)
+    # autocommit=True is required, not optional: CREATE INDEX CONCURRENTLY
+    # (which checkpointer.setup() runs) cannot execute inside a transaction
+    # block at all — Postgres rejects it outright, it's not a lock/timing
+    # issue. Must match graph.py's own pool kwargs exactly.
+    pool: Any = AsyncConnectionPool(
+        _pg_dsn(),
+        min_size=1,
+        max_size=1,
+        open=False,
+        kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row},
+    )
     await pool.open(wait=True, timeout=30)
     try:
         from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
