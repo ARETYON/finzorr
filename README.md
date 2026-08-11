@@ -94,8 +94,10 @@ cd backend && uv run pytest -q         # 53 sanity tests, no live deps
 ## Repository layout
 
 ```
-backend/    FastAPI + LangGraph (app/graph = supervisor + 6 route nodes),
-            ai/ provider gateway, nl2sql/ guarded screener, rag/ + documents/,
+backend/    FastAPI + LangGraph — app/orchestration/ (graph, supervisor,
+            turn lifecycle), app/specialists/ (6 route nodes), app/domain/
+            (pure business logic), app/infrastructure/ (DB/Redis/Qdrant/LLM
+            adapters), nl2sql/ guarded screener, rag/ + documents/,
             market_data/, mcp_client/, tools_registry/, alembic/, tests/
 frontend/   React + Vite + Tailwind SPA (multi-session chat, watchlist, uploads)
 .github/    CI: backend lint+tests, frontend build, security scans
