@@ -11,6 +11,7 @@ import { useSettingsStore } from '../store/settingsStore'
 
 export default function SettingsModal({ onClose }: { onClose: () => void }) {
   const user = useAuthStore((s) => s.user)
+  const updateUser = useAuthStore((s) => s.updateUser)
   const { autoRead, setAutoRead } = useSettingsStore()
   const [instructions, setInstructions] = useState('')
   const [saving, setSaving] = useState(false)
@@ -93,7 +94,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
     setSaving(true)
     try {
       const updated = await updateMe(instructions)
-      useAuthStore.setState({ user: updated })
+      updateUser(updated)
       toast.success('Settings saved')
       onClose()
     } catch {

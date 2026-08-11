@@ -9,6 +9,8 @@ interface AuthState {
   loginGoogle: (idToken: string) => Promise<void>
   loginDev: () => Promise<void>
   logout: () => Promise<void>
+  updateUser: (patch: Partial<User>) => void
+  clearSession: () => void
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -33,5 +35,16 @@ export const useAuthStore = create<AuthState>((set) => ({
   logout: async () => {
     await authApi.logout()
     set({ user: null })
+  },
+  // Patch the current user in place (e.g. after a profile update) without
+  // components reaching into the store's internals via setState directly.
+  updateUser: (patch: Partial<User>) => {
+    set((state) => ({ user: state.user ? { ...state.user, ...patch } : state.user }))
+  },
+  // Same effect as load()'s catch branch: drop the session. Used centrally
+  // by the api client's 401 response interceptor so a session expiring
+  // mid-app is handled the same way as a failed initial load.
+  clearSession: () => {
+    set({ user: null, loading: false })
   },
 }))
