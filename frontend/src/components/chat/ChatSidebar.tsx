@@ -6,9 +6,9 @@ import SettingsModal from '../SettingsModal'
 import ThemeToggle from '../ThemeToggle'
 import { useAuthStore } from '../../store/authStore'
 import { useChatStore } from '../../store/chatStore'
-import FileUpload from './FileUpload'
-import SearchBox from './SearchBox'
-import WatchlistPanel from './WatchlistPanel'
+import DocumentsContainer from '../../features/documents/DocumentsContainer'
+import SearchContainer from '../../features/search/SearchContainer'
+import WatchlistContainer from '../../features/watchlist/WatchlistContainer'
 
 interface ChatSidebarProps {
   watchlistRefreshKey: number
@@ -88,7 +88,7 @@ export default function ChatSidebar({ watchlistRefreshKey, open, onClose }: Chat
           <Plus size={16} /> New chat
         </button>
       </div>
-      <SearchBox />
+      <SearchContainer />
       <div className="fui-label px-3 pb-1">session log</div>
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-2">
         {sessions.map((s) => (
@@ -146,8 +146,8 @@ export default function ChatSidebar({ watchlistRefreshKey, open, onClose }: Chat
         ))}
       </nav>
       <div className="fui-hatch fui-only h-1.5 w-full" />
-      <WatchlistPanel refreshKey={watchlistRefreshKey} />
-      <FileUpload />
+      <WatchlistContainer refreshKey={watchlistRefreshKey} />
+      <DocumentsContainer />
       <div className="border-t border-line p-3">
         <div className="flex items-center justify-between gap-2 text-xs text-ink-dim">
           <span className="truncate">{user?.name}</span>

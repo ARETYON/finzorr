@@ -1,64 +1,32 @@
-// Document upload button + user document list (delete supported). Accepts
-// PDF/DOCX/PPTX/XLSX/XLS/CSV/TXT/MD; after upload the document is immediately
-// queryable in chat (the router knows the user's uploads by name).
+// Presentational: document upload button + user document list (delete
+// supported). Accepts PDF/DOCX/PPTX/XLSX/XLS/CSV/TXT/MD via props; all
+// fetching/mutation lives in DocumentsContainer.
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useRef } from 'react'
 import { FileText, Loader2, Paperclip, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import {
-  deleteDocument,
-  listDocuments,
-  uploadDocument,
-  type DocumentInfo,
-} from '../../api/documents'
+import type { DocumentInfo } from '../../api/documents'
 
-export default function FileUpload() {
-  const [docs, setDocs] = useState<DocumentInfo[]>([])
-  const [busy, setBusy] = useState(false)
+interface DocumentsListProps {
+  docs: DocumentInfo[]
+  busy: boolean
+  onUpload: (file: File) => Promise<void>
+  onDelete: (id: string) => void
+}
+
+export default function DocumentsList({ docs, busy, onUpload, onDelete }: DocumentsListProps) {
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const refresh = useCallback(async () => {
-    try {
-      setDocs(await listDocuments())
-    } catch {
-      // non-critical panel
-    }
-  }, [])
-
-  useEffect(() => {
-    void refresh()
-  }, [refresh])
-
-  const onPick = async (file: File | undefined) => {
+  const onPick = (file: File | undefined) => {
     if (!file) return
     const allowed = ['.pdf', '.docx', '.pptx', '.xlsx', '.xls', '.csv', '.txt', '.md']
     if (!allowed.some((ext) => file.name.toLowerCase().endsWith(ext))) {
       toast.error('Supported types: PDF, DOCX, PPTX, XLSX, XLS, CSV, TXT, MD')
       return
     }
-    setBusy(true)
-    try {
-      const result = await uploadDocument(file)
-      if (result.status === 'ready') toast.success(`${file.name} ready — ask me about it!`)
-      else toast.error(`${file.name}: ingestion ${result.status}`)
-      await refresh()
-    } catch (err: unknown) {
-      const detail =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      toast.error(detail ?? 'Upload failed')
-    } finally {
-      setBusy(false)
+    void onUpload(file).finally(() => {
       if (inputRef.current) inputRef.current.value = ''
-    }
-  }
-
-  const remove = async (id: string) => {
-    try {
-      await deleteDocument(id)
-      await refresh()
-    } catch {
-      toast.error('Could not delete document')
-    }
+    })
   }
 
   return (
@@ -80,7 +48,7 @@ export default function FileUpload() {
           type="file"
           accept=".pdf,.docx,.pptx,.xlsx,.xls,.csv,.txt,.md"
           className="hidden"
-          onChange={(e) => void onPick(e.target.files?.[0])}
+          onChange={(e) => onPick(e.target.files?.[0])}
         />
       </div>
       <ul className="space-y-1">
@@ -97,7 +65,7 @@ export default function FileUpload() {
               {d.status}
             </span>
             <button
-              onClick={() => void remove(d.id)}
+              onClick={() => onDelete(d.id)}
               className="ml-auto hidden text-ink-faint hover:text-danger group-hover:block"
               aria-label={`Delete ${d.filename}`}
             >
