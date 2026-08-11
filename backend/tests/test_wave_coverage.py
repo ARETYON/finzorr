@@ -362,7 +362,7 @@ async def test_feedback_never_500s_when_langsmith_raises(
     user_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from app.core.config import settings as cfg
-    from app.routers import chat as chat_router
+    from app.interface import chat as chat_router
 
     session_id = await _create_session(user_client)
     message_id = await _seed_exchange(session_id)
@@ -392,7 +392,7 @@ async def test_feedback_null_run_id_and_zero_rating_skip_langsmith(
     user_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from app.core.config import settings as cfg
-    from app.routers import chat as chat_router
+    from app.interface import chat as chat_router
 
     called: list[Any] = []
 

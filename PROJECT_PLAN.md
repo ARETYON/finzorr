@@ -143,7 +143,7 @@ No published host ports on any VM service — `cloudflared` is the only path in.
 ```mermaid
 flowchart TD
   U[User - React SPA<br/>streaming chat, sidebar, upload, feedback] --> CF[Cloudflare Tunnel<br/>TLS, WAF, zero inbound ports]
-  CF --> BE[FastAPI backend<br/>routers/chat_ws.py<br/>WS frames: thinking/token/tool_call/response/error/stopped]
+  CF --> BE[FastAPI backend<br/>interface/chat_ws.py<br/>WS frames: thinking/token/tool_call/response/error/stopped]
   BE --> ORCH[LangGraph StateGraph orchestrator<br/>graph/graph.py - run_turn<br/>AsyncPostgresSaver checkpointer, thread_id = session_id]
   ORCH --> CM[Conversation Manager<br/>Postgres messages]
   ORCH --> RT[Router / Supervisor<br/>graph/supervisor.py]
@@ -884,7 +884,7 @@ the Word doc regenerated.
 | Supervisor/router | `backend/app/orchestration/supervisor.py` | One LLM call → JSON `{route, plan, reason}` + deterministic regex keyword fallback (works with the LLM down; unit-tested) |
 | Conversation state | `backend/app/orchestration/turn.py` + checkpointer | LangGraph `AsyncPostgresSaver`, `thread_id = session_id` — history survives restarts; graceful degrade to DB-reloaded history |
 | LLM gateway | `backend/app/infrastructure/llm/` | One `OpenAICompatibleProvider` class (openai SDK, swappable base URL): Ollama `qwen2.5:14b` in dev; Groq/Gemini/OpenRouter/HF via env keys. Bounded fallback retry + per-provider daily token budgets (Redis) |
-| Streaming | `backend/app/routers/chat_ws.py` | FastAPI WebSocket — thinking/token/tool_call/response/stopped/error frames; mid-stream cancel works because turns run as background asyncio tasks; manual Origin validation; cookie auth at handshake |
+| Streaming | `backend/app/interface/chat_ws.py` | FastAPI WebSocket — thinking/token/tool_call/response/stopped/error frames; mid-stream cancel works because turns run as background asyncio tasks; manual Origin validation; cookie auth at handshake |
 
 ### Use case → implementation → technology
 
@@ -902,16 +902,16 @@ the Word doc regenerated.
 | Read-a-URL | `tools_registry/web_tools.py` | httpx + bs4 main-content extraction, SSRF guard (private/loopback IPs refused), untrusted-content wrapping |
 | Deep research | `tools_registry/research_tools.py` | LLM plans ≤4 sub-questions → parallel searches → ≤4 page reads → cited sectioned report |
 | Sandboxed Python execution | `tools_registry/code_tools.py` | `docker run --rm --network=none --memory=256m --cpus=1 --read-only`, 15s timeout; env-flagged (`CODE_INTERPRETER`), off in prod until security review |
-| Image understanding | `backend/app/infrastructure/llm/vision.py` + `routers/attachments.py` | Base64 image → Gemini flash (if key) or local Ollama vision model (`VISION_MODEL`); PNG/JPEG magic-byte validation, ≤5MB |
+| Image understanding | `backend/app/infrastructure/llm/vision.py` + `interface/attachments.py` | Base64 image → Gemini flash (if key) or local Ollama vision model (`VISION_MODEL`); PNG/JPEG magic-byte validation, ≤5MB |
 | Image generation (slot) | `tools_registry/image_tools.py` | OpenAI-images-compatible endpoint via `IMAGE_API_*` envs; registers only when configured; output stored as user attachment |
 | GitHub tools | `backend/app/mcp_client/` | Hand-rolled MCP client (JSON-RPC 2.0 over Streamable HTTP), tools/list discovery, read-only allowlist, token-gated |
 | Own microservices as tools | `tools_registry/local_microservice.py` | JSON config file → each entry becomes an LLM tool (httpx GET/POST); zero code to add a service |
 | Gmail / Calendar | `backend/app/integrations/google_connect.py` | Full OAuth code-exchange, Fernet-encrypted refresh tokens (`oauth_tokens` table), read-only scopes; gated on `GOOGLE_CLIENT_SECRET` |
 | Login / sessions | `backend/app/auth/` | google-auth ID-token verification (no client secret needed) + own PyJWT HS256 httpOnly cookie; dev bypass only when `APP_ENV=dev` |
-| Share links / personas | `backend/app/routers/sharing.py` | `share_tokens` (public read-only transcript endpoint) + `personas` (per-session system-prompt overlay injected in `turn.py`) |
+| Share links / personas | `backend/app/interface/sharing.py` | `share_tokens` (public read-only transcript endpoint) + `personas` (per-session system-prompt overlay injected in `turn.py`) |
 | Inline stock charts | chart payload in `graph/nodes/tools.py` → WS `response.chart` | Full OHLC series from the history cache; rendered by recharts on the frontend |
 | Artifacts (documents panel) | prompt convention in `core/prompt_registry.py` | ```` ```document ```` fenced blocks; persisted inside the message row; side-panel rendering client-side |
-| Feedback loop | `routers/chat.py` + `models/feedback.py` | 👍/👎 → `feedback` table with route/query/response/citations — the future eval golden-dataset seed |
+| Feedback loop | `interface/chat.py` + `models/feedback.py` | 👍/👎 → `feedback` table with route/query/response/citations — the future eval golden-dataset seed |
 
 ### Data stores (4)
 

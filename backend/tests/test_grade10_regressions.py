@@ -90,12 +90,12 @@ class TestWsFrameRobustness:
         ],
     )
     def test_parse_attachments_tolerates_any_shape(self, payload: dict[str, object]) -> None:
-        from app.routers.chat_ws import _parse_attachments
+        from app.interface.chat_ws import _parse_attachments
 
         assert _parse_attachments(payload) == []
 
     def test_parse_attachments_keeps_first_string(self) -> None:
-        from app.routers.chat_ws import _parse_attachments
+        from app.interface.chat_ws import _parse_attachments
 
         assert _parse_attachments({"attachments": ["a.png", "b.png"]}) == ["a.png"]
 
@@ -105,7 +105,7 @@ class TestWsFrameRobustness:
         permanent-lockout bug."""
         import inspect
 
-        from app.routers.chat_ws import _Connection
+        from app.interface.chat_ws import _Connection
 
         source = inspect.getsource(_Connection.start_turn)
         assert source.index("_parse_attachments") < source.index("claim_turn")

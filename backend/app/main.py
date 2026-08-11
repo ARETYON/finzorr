@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 from app.core.config import settings
 from app.core.errors import install_error_handlers
 from app.core.logging import configure_logging, log, new_correlation_id
-from app.routers import (
+from app.interface import (
     attachments,
     auth,
     chat,
@@ -162,6 +162,6 @@ app.include_router(chat.v1_router, prefix="/api/v1")
 app.include_router(chat.legacy_router, prefix="/api")
 
 if settings.is_dev:
-    from app.routers import debug
+    from app.interface import debug
 
     app.include_router(debug.router, prefix="/api")

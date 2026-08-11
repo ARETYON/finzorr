@@ -17,8 +17,8 @@ import pytest
 from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
+from app.interface import chat_ws as ws_mod
 from app.main import app
-from app.routers import chat_ws as ws_mod
 
 pytestmark = pytest.mark.sanity
 
