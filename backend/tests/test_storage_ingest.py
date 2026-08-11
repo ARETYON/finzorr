@@ -9,16 +9,14 @@ import pytest
 
 from app.core.config import settings
 from app.documents.ingest import (
-    CHUNK_CHARS,
-    CHUNK_OVERLAP,
     DocumentTooLargeError,
     UnsupportedDocumentError,
-    chunk_pages,
     extract_any,
     extract_pages,
     extract_text_file,
 )
 from app.documents.storage import DocumentStorage, LocalDiskStorage, get_storage
+from app.domain.chunking import CHUNK_CHARS, CHUNK_OVERLAP, chunk_pages
 
 pytestmark = pytest.mark.sanity
 

@@ -1,4 +1,6 @@
-"""Runtime citation-marker validation.
+"""Pure domain logic — no I/O, no framework dependencies. Safe to unit-test without mocks.
+
+Runtime citation-marker validation.
 
 The exact `[(\\d+)]` + range-check logic proven in `evals/grounded_eval.py`
 (`_eval_web`/`_eval_research`), extracted so it runs at RUNTIME too — not

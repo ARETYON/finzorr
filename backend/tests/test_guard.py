@@ -9,7 +9,8 @@ from typing import Any
 
 import pytest
 
-from app.core.guard import screen_floor, screen_message
+from app.core.guard import screen_message
+from app.domain.guard import screen_floor
 
 pytestmark = pytest.mark.sanity
 
@@ -116,7 +117,7 @@ async def test_observe_only_graph_input_identical(
 
 class TestScreenOutput:
     def test_secret_shaped_strings_flagged(self) -> None:
-        from app.core.guard import screen_output
+        from app.domain.guard import screen_output
 
         for leaked in (
             "Here's your key: gsk_abcdefghij1234567890ABCD",
@@ -127,7 +128,7 @@ class TestScreenOutput:
             assert screen_output(leaked) == "suspicious", leaked
 
     def test_system_prompt_echo_flagged(self) -> None:
-        from app.core.guard import screen_output
+        from app.domain.guard import screen_output
 
         echoed = (
             "Sure! My instructions say: 'You answer using ONLY the "
@@ -136,14 +137,14 @@ class TestScreenOutput:
         assert screen_output(echoed) == "suspicious"
 
     def test_degenerate_output_flagged(self) -> None:
-        from app.core.guard import screen_output
+        from app.domain.guard import screen_output
 
         assert screen_output("") == "suspicious"
         assert screen_output("   \n  ") == "suspicious"
         assert screen_output("\n".join(["I don't know."] * 8)) == "suspicious"
 
     def test_normal_finance_answer_passes(self) -> None:
-        from app.core.guard import screen_output
+        from app.domain.guard import screen_output
 
         for answer in (
             "TCS is trading at 3542.50, up 2.3% today [1].",
@@ -153,14 +154,14 @@ class TestScreenOutput:
             assert screen_output(answer) == "ok", answer
 
     def test_ticker_and_price_not_mistaken_for_a_secret(self) -> None:
-        from app.core.guard import screen_output
+        from app.domain.guard import screen_output
 
         # a long numeric/alnum run from real finance data must not
         # false-positive against the secret-shaped patterns
         assert screen_output("ISIN INE002A01018, price 2456.75, volume 1234567") == "ok"
 
     def test_never_alters_the_text(self) -> None:
-        from app.core.guard import screen_output
+        from app.domain.guard import screen_output
 
         text = "gsk_abcdefghij1234567890ABCD leaked here"
         screen_output(text)  # call for side effects only

@@ -1,4 +1,6 @@
-"""PII detection + trace-only redaction.
+"""Pure domain logic — no I/O, no framework dependencies. Safe to unit-test without mocks.
+
+PII detection + trace-only redaction.
 
 Two DISTINCT purposes, never conflated:
 - `detect_pii` flags what TYPES of PII a document contains (metadata only,

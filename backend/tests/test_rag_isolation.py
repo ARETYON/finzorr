@@ -617,7 +617,7 @@ class TestMmrSelect:
     def test_top_1_floor_holds_even_at_lambda_zero(self) -> None:
         """A diversity-heavy lambda can reshuffle positions 2+ but must
         NEVER drop the single best-scoring hit."""
-        from app.rag.vector_store import _mmr_select
+        from app.domain.retrieval import _mmr_select
 
         query = [1.0, 0.0, 0.0]
         best = ("best", [1.0, 0.0, 0.0])  # perfect match
@@ -628,7 +628,7 @@ class TestMmrSelect:
         assert selected[0] == "best"  # top-1 floor holds even at lam=0
 
     def test_prefers_diversity_over_near_duplicate_at_low_lambda(self) -> None:
-        from app.rag.vector_store import _mmr_select
+        from app.domain.retrieval import _mmr_select
 
         query = [1.0, 0.0, 0.0]
         best = ("best", [1.0, 0.0, 0.0])
@@ -638,12 +638,12 @@ class TestMmrSelect:
         assert selected == ["best", "diverse"]  # skips the near-duplicate
 
     def test_empty_candidates_returns_empty(self) -> None:
-        from app.rag.vector_store import _mmr_select
+        from app.domain.retrieval import _mmr_select
 
         assert _mmr_select([1.0, 0.0], [], top_k=3, lam=0.5) == []
 
     def test_fewer_candidates_than_top_k(self) -> None:
-        from app.rag.vector_store import _mmr_select
+        from app.domain.retrieval import _mmr_select
 
         query = [1.0, 0.0]
         candidates = [("a", [1.0, 0.0]), ("b", [0.0, 1.0])]

@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.core.pii import detect_pii, redact_for_trace
+from app.domain.pii import detect_pii, redact_for_trace
 
 pytestmark = pytest.mark.sanity
 

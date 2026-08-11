@@ -11,12 +11,12 @@ from typing import Any
 
 from app.ai.base import SystemMessage, UserMessage
 from app.ai.completion import stream
-from app.core.citations import find_invalid_markers
-from app.core.guard import screen_floor, screen_output
 from app.core.logging import log
 from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
 from app.core.trace import tag
 from app.core.untrusted import wrap_untrusted
+from app.domain.citations import find_invalid_markers
+from app.domain.guard import screen_floor, screen_output
 from app.graph.nodes.common import step_context, task_for, with_instructions
 from app.graph.state import AssistantState
 from app.graph.streaming import emit_frame

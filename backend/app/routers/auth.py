@@ -7,10 +7,10 @@ from app.auth.dependencies import get_current_user, get_or_create_user
 from app.auth.google_oauth import GoogleAuthError, verify_google_id_token
 from app.auth.jwt_session import SESSION_COOKIE, cookie_kwargs, create_session_jwt
 from app.core.config import settings
-from app.core.guard import screen_floor
 from app.core.logging import log
 from app.core.pagination import BARE_LIST_DESCRIPTION
 from app.db.session import get_db
+from app.domain.guard import screen_floor
 from app.models.user import User
 from app.schemas.auth import GoogleLoginIn, UserOut, UserUpdateIn
 from app.schemas.misc import LogoutOut, MemoryFactOut

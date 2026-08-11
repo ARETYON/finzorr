@@ -20,7 +20,7 @@ from app.ai.registry import default_model, get_provider
 from app.core.config import settings
 from app.core.logging import log
 from app.core.otel import span
-from app.core.pii import redact_for_trace
+from app.domain.pii import redact_for_trace
 
 OnToken = Callable[[str], Awaitable[None]]
 

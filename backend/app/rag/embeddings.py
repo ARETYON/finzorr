@@ -9,7 +9,7 @@ import httpx
 from langsmith import traceable
 
 from app.core.config import settings
-from app.core.pii import redact_for_trace
+from app.domain.pii import redact_for_trace
 
 _TIMEOUT_S = 30.0
 

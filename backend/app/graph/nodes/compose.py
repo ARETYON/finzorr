@@ -150,9 +150,9 @@ async def compose_node(state: AssistantState) -> AssistantState:
     # citation validity on the synthesized text against the MERGED/renumbered
     # citation set — a different marker space than any single step's own
     # (observe-only, never mangles the answer)
-    from app.core.citations import find_invalid_markers
-    from app.core.guard import screen_output
     from app.core.trace import tag as _tag
+    from app.domain.citations import find_invalid_markers
+    from app.domain.guard import screen_output
 
     invalid = find_invalid_markers(final, len(merged_citations))
     if invalid:

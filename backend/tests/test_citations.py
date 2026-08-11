@@ -3,7 +3,7 @@ evals/grounded_eval.py so it runs live, not only in a manual eval."""
 
 import pytest
 
-from app.core.citations import find_invalid_markers
+from app.domain.citations import find_invalid_markers
 
 pytestmark = pytest.mark.sanity
 

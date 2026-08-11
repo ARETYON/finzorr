@@ -19,11 +19,10 @@ from langsmith import traceable
 from app.core.config import settings
 from app.core.logging import log
 from app.core.trace import mark
+from app.domain.chunking import CHUNK_CHARS, CHUNK_OVERLAP, chunk_pages
 from app.rag.embeddings import embed_texts
 from app.rag.vector_store import upsert_chunks
 
-CHUNK_CHARS = 1200
-CHUNK_OVERLAP = 200
 _EMBED_BATCH = 16
 _CSV_MAX_ROWS = 2000
 
@@ -47,24 +46,6 @@ def extract_pages(pdf_bytes: bytes) -> LabeledPages:
                 f"{doc.page_count} pages exceeds the {settings.MAX_UPLOAD_PAGES}-page limit"
             )
         return [(f"p.{i}", page.get_text()) for i, page in enumerate(doc, start=1)]
-
-
-def chunk_pages(pages: LabeledPages, filename: str) -> list[dict[str, str]]:
-    """Window each labeled pseudo-page, keeping its label as the citation
-    anchor (`p.N` / `slide N` / `sheet:Name` / `§N`)."""
-    chunks: list[dict[str, str]] = []
-    for label, text in pages:
-        clean = " ".join(text.split())
-        if not clean:
-            continue
-        start = 0
-        while start < len(clean):
-            piece = clean[start : start + CHUNK_CHARS]
-            chunks.append({"text": piece, "title": filename, "locator": label})
-            if start + CHUNK_CHARS >= len(clean):
-                break
-            start += CHUNK_CHARS - CHUNK_OVERLAP
-    return chunks
 
 
 def extract_docx(data: bytes) -> LabeledPages:
@@ -268,7 +249,7 @@ async def ingest_document(
     pages = await asyncio.to_thread(_extract_traced, filename, data)
     # audit visibility only — the document itself is never redacted or
     # blocked; PII types (never values) are recorded as trace metadata
-    from app.core.pii import detect_pii
+    from app.domain.pii import detect_pii
 
     full_text = " ".join(t for _, t in pages)
     if full_text:
