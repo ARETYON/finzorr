@@ -10,7 +10,14 @@ import FileUpload from './FileUpload'
 import SearchBox from './SearchBox'
 import WatchlistPanel from './WatchlistPanel'
 
-export default function ChatSidebar({ watchlistRefreshKey }: { watchlistRefreshKey: number }) {
+interface ChatSidebarProps {
+  watchlistRefreshKey: number
+  /** Mobile-only: whether the drawer is open. Always visible at md+ regardless. */
+  open: boolean
+  onClose: () => void
+}
+
+export default function ChatSidebar({ watchlistRefreshKey, open, onClose }: ChatSidebarProps) {
   const { sessions, activeSessionId, selectSession, newSession, rename, remove } = useChatStore()
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
@@ -33,14 +40,49 @@ export default function ChatSidebar({ watchlistRefreshKey }: { watchlistRefreshK
     navigate('/login')
   }
 
+  const selectAndClose = (id: string) => {
+    void selectSession(id)
+    onClose() // a session pick on mobile should dismiss the drawer
+  }
+
   return (
-    <aside className="flex w-64 flex-col border-r border-line bg-panel">
+    <>
+      {/* Backdrop: mobile only, dismisses the drawer on tap-outside */}
+      {open && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      )}
+      <aside
+        className={clsx(
+          'flex w-64 flex-col border-r border-line bg-panel',
+          // Mobile: fixed slide-in drawer, off-canvas by default.
+          // md+: back in normal flow, always visible, transform reset.
+          'fixed inset-y-0 left-0 z-50 transition-transform duration-200 ease-in-out',
+          'md:static md:z-auto md:translate-x-0 md:transition-none',
+          open ? 'translate-x-0' : '-translate-x-full',
+        )}
+      >
       <div className="p-3">
-        <div className="fui-label mb-2 pl-1">
-          finzorr // ops console
+        <div className="mb-2 flex items-center justify-between pl-1">
+          <div className="fui-label">
+            finzorr // ops console
+          </div>
+          <button
+            onClick={onClose}
+            className="text-ink-faint hover:text-ink-mid md:hidden"
+            aria-label="Close menu"
+          >
+            <X size={18} />
+          </button>
         </div>
         <button
-          onClick={() => void newSession()}
+          onClick={() => {
+            void newSession()
+            onClose()
+          }}
           className="clip-btn flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-btn-ink hover:bg-accent-hover"
         >
           <Plus size={16} /> New chat
@@ -78,7 +120,7 @@ export default function ChatSidebar({ watchlistRefreshKey }: { watchlistRefreshK
             ) : (
               <>
                 <button
-                  onClick={() => void selectSession(s.id)}
+                  onClick={() => selectAndClose(s.id)}
                   className="flex min-w-0 flex-1 items-center gap-2 text-left"
                 >
                   <MessageSquare size={14} className="shrink-0 text-ink-faint" />
@@ -129,6 +171,7 @@ export default function ChatSidebar({ watchlistRefreshKey }: { watchlistRefreshK
         </div>
       </div>
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
-    </aside>
+      </aside>
+    </>
   )
 }

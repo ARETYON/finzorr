@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Download, Link2Off, Share2 } from 'lucide-react'
+import { Download, Link2Off, Menu, Share2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import ArtifactPanel from '../components/chat/ArtifactPanel'
 import { extractArtifact, type Artifact } from '../lib/artifact'
@@ -26,6 +26,7 @@ export default function Chat() {
   const [artifact, setArtifact] = useState<Artifact | null>(null)
   const [hasShareLink, setHasShareLink] = useState(false)
   const [routing, setRouting] = useState<string | null>(null)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [approval, setApproval] = useState<{ tools: { name: string }[]; sessionId: string } | null>(
     null,
   )
@@ -219,10 +220,21 @@ export default function Chat() {
 
   return (
     <div className="flex h-full">
-      <ChatSidebar watchlistRefreshKey={watchlistRefreshKey} />
+      <ChatSidebar
+        watchlistRefreshKey={watchlistRefreshKey}
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
       <main className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center justify-between border-b border-line bg-panel px-4 py-2.5">
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="text-ink-faint hover:text-ink-mid md:hidden"
+              aria-label="Open menu"
+            >
+              <Menu size={18} />
+            </button>
             <h1 className="app-title fui-glow max-w-md truncate text-sm font-semibold text-ink-strong">
               {activeTitle}
             </h1>
