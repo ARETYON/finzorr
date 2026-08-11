@@ -10,10 +10,10 @@ import pytest
 from httpx import AsyncClient
 
 from app.db.session import SessionLocal
-from app.graph.nodes.memory import _apply_actions, _get_alerts, _get_watchlist, parse_reply
-from app.graph.nodes.replan import replan_node
 from app.graph.state import AssistantState
 from app.models.message import Message
+from app.specialists.memory import _apply_actions, _get_alerts, _get_watchlist, parse_reply
+from app.specialists.replan import replan_node
 
 pytestmark = pytest.mark.integration
 
@@ -90,7 +90,7 @@ async def test_replan_llm_failure_early_exits(monkeypatch: pytest.MonkeyPatch) -
 async def test_final_step_failure_still_replans() -> None:
     """A failure on the LAST (or only) step gets the one replan attempt too —
     that's exactly where a revision can still rescue the answer."""
-    from app.graph.nodes.advance import advance_node
+    from app.specialists.advance import advance_node
 
     out = await advance_node(
         {
@@ -108,7 +108,7 @@ async def test_final_step_failure_still_replans() -> None:
 
 
 async def test_final_step_failure_after_replan_ends_normally() -> None:
-    from app.graph.nodes.advance import advance_node
+    from app.specialists.advance import advance_node
 
     out = await advance_node(
         {
@@ -130,8 +130,8 @@ async def test_rag_and_memory_degrades_set_step_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Every specialist failure path must raise the replanner's only signal."""
-    from app.graph.nodes import memory as memory_mod
-    from app.graph.nodes import rag as rag_mod
+    from app.specialists import memory as memory_mod
+    from app.specialists import rag as rag_mod
 
     async def boom(*_a: Any, **_k: Any) -> Any:
         raise RuntimeError("backend down")
@@ -152,7 +152,7 @@ async def test_rag_and_memory_degrades_set_step_error(
 
 async def test_research_synthesis_refuses_with_zero_sources() -> None:
     """No sources gathered => refuse + flag, never a fabricated 'report'."""
-    from app.graph.nodes.research import research_synthesize_node
+    from app.specialists.research import research_synthesize_node
 
     out = await research_synthesize_node(
         {"user_msg": "q", "current_task": "", "research_sources": [], "research_pages": []}

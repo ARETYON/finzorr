@@ -84,7 +84,7 @@ async def _vision_turn(
     image turn produced NO trace at all."""
     from app.ai.vision import describe_image, vision_available
     from app.documents.storage import get_storage
-    from app.graph.nodes.persist import persist_node
+    from app.specialists.persist import persist_node
 
     if not vision_available():
         answer = (
@@ -154,7 +154,7 @@ async def record_out_of_band_turn(
     `turn_id` makes the write idempotent against a persist that already
     committed inside the graph before the cancel landed."""
     from app.core.trace import tag
-    from app.graph.nodes.persist import persist_node
+    from app.specialists.persist import persist_node
 
     tag(f"salvage:{reason}")
     await persist_node(

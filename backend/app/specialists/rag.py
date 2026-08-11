@@ -17,11 +17,12 @@ from app.core.trace import tag
 from app.core.untrusted import wrap_untrusted
 from app.domain.citations import find_invalid_markers
 from app.domain.guard import screen_floor, screen_output
-from app.graph.nodes.common import step_context, task_for, with_instructions
 from app.graph.state import AssistantState
 from app.graph.streaming import emit_frame
 from app.rag.embeddings import embed_query
 from app.rag.vector_store import GLOSSARY_TENANT, Hit, search
+from app.specialists.base import Specialist
+from app.specialists.common import step_context, task_for, with_instructions
 
 TOP_K = 6
 SEARCH_TIMEOUT_S = 5.0
@@ -240,3 +241,7 @@ async def rag_node(state: AssistantState) -> AssistantState:
             "route": "rag",
             "step_error": True,
         }
+
+
+# Structural conformance check — rag_node must satisfy the Specialist protocol.
+_: Specialist = rag_node

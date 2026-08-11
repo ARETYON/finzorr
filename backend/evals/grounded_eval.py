@@ -31,7 +31,7 @@ RAG_PROMPTS = ["What was the total revenue mentioned in the document?"]
 
 
 async def _eval_web(prompt: str) -> list[str]:
-    from app.graph.nodes.web_search import web_search_node
+    from app.specialists.web_search import web_search_node
 
     failures: list[str] = []
     out = await web_search_node({"session_id": "eval", "user_msg": prompt})
@@ -49,7 +49,7 @@ async def _eval_web(prompt: str) -> list[str]:
 async def _eval_research(prompt: str) -> list[str]:
     from typing import Any
 
-    from app.graph.nodes.research import (
+    from app.specialists.research import (
         research_plan_node,
         research_read_node,
         research_search_node,
@@ -82,8 +82,8 @@ async def _eval_rag(prompt: str) -> list[str]:
     import uuid
 
     from app.documents.ingest import ingest_document
-    from app.graph.nodes.rag import rag_node
     from app.rag.vector_store import delete_tenant
+    from app.specialists.rag import rag_node
 
     tenant_uuid = uuid.uuid4()
     doc_text = (

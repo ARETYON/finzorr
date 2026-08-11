@@ -22,6 +22,7 @@ from app.graph.state import AssistantState
 from app.models.chat_session import ChatSession
 from app.models.message import Message
 from app.models.user import utcnow
+from app.specialists.base import Specialist
 
 TITLE_MAX_CHARS = 60
 
@@ -135,3 +136,7 @@ async def persist_node(state: AssistantState) -> AssistantState:
             {"role": "assistant", "content": final_text},
         ],
     }
+
+
+# Structural conformance check — persist_node must satisfy the Specialist protocol.
+_: Specialist = persist_node

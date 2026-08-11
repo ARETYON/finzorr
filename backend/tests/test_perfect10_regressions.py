@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 
 from app.graph.graph import _research_search_key
-from app.graph.nodes.compose import renumber_steps
+from app.specialists.compose import renumber_steps
 
 pytestmark = pytest.mark.sanity
 

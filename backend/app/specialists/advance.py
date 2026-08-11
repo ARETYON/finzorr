@@ -13,6 +13,7 @@ from typing import Any
 from app.core.logging import log
 from app.graph.state import AssistantState
 from app.graph.streaming import emit_frame
+from app.specialists.base import Specialist
 
 STEP_RECORD_CHARS = 2000  # stored per step in state (checkpointed)
 
@@ -83,6 +84,10 @@ async def advance_node(state: AssistantState) -> AssistantState:
             }
         )
     return result
+
+
+# Structural conformance check — advance_node must satisfy the Specialist protocol.
+_: Specialist = advance_node
 
 
 def after_step(state: AssistantState) -> str:

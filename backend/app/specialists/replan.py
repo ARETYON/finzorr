@@ -17,6 +17,7 @@ from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
 from app.graph.state import AssistantState
 from app.graph.streaming import emit_frame
 from app.graph.supervisor import validate_plan
+from app.specialists.base import Specialist
 
 register(
     AgentPrompt(
@@ -115,3 +116,7 @@ async def replan_node(state: AssistantState) -> AssistantState:
         }
     )
     return result
+
+
+# Structural conformance check — replan_node must satisfy the Specialist protocol.
+_: Specialist = replan_node

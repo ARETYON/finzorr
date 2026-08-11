@@ -11,9 +11,10 @@ from app.ai.base import SystemMessage, UserMessage
 from app.ai.completion import stream
 from app.core.logging import log
 from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
-from app.graph.nodes.common import with_instructions
 from app.graph.state import AssistantState
 from app.graph.streaming import emit_frame
+from app.specialists.base import Specialist
+from app.specialists.common import with_instructions
 
 register(
     AgentPrompt(
@@ -166,3 +167,7 @@ async def compose_node(state: AssistantState) -> AssistantState:
         "sources": merged_sources,
         "chart": merged_chart,
     }
+
+
+# Structural conformance check — compose_node must satisfy the Specialist protocol.
+_: Specialist = compose_node
