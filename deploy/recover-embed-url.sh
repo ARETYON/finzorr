@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# One-time recovery for servers that ran vm-bootstrap.sh BEFORE commit
+# 8ded832 (which fixed prod.env never setting EMBED_OLLAMA_URL/OLLAMA_URL,
+# causing glossary/fundamentals seeding to fail with "All connection
+# attempts failed" — the api container tried localhost:11434, which
+# inside its own network namespace means itself, not the ollama
+# container). Safe to run more than once — the env-var append is
+# idempotent, and it does NOT touch Postgres/session/Qdrant secrets.
+#
+# Usage: cd /opt/finzorr && sudo bash deploy/recover-embed-url.sh
+set -euo pipefail
+
+if [ "$(id -u)" -ne 0 ]; then
+  echo "Run as root: sudo bash $0" >&2
+  exit 1
+fi
+
+INSTALL_DIR="/opt/finzorr"
+ENV_FILE="${INSTALL_DIR}/prod.env"
+COMPOSE_FILE="${INSTALL_DIR}/deploy/docker-compose.prod.yml"
+
+if [ ! -f "${ENV_FILE}" ]; then
+  echo "No ${ENV_FILE} found — this script is only for servers that already ran vm-bootstrap.sh once." >&2
+  exit 1
+fi
+
+echo "==> 1/3 Patching ${ENV_FILE} (idempotent — skips lines already present)"
+grep -q '^EMBED_OLLAMA_URL=' "${ENV_FILE}" || echo "EMBED_OLLAMA_URL=http://ollama:11434" >> "${ENV_FILE}"
+grep -q '^OLLAMA_URL=' "${ENV_FILE}" || echo "OLLAMA_URL=http://ollama:11434" >> "${ENV_FILE}"
+
+echo "==> 2/3 Re-running glossary + fundamentals seeding"
+cd "${INSTALL_DIR}"
+docker compose -f "${COMPOSE_FILE}" run --rm api python -m app.rag.ingest_corpus
+docker compose -f "${COMPOSE_FILE}" run --rm api python -m app.nl2sql.jobs.refresh_fundamentals
+
+echo "==> 3/3 Bringing up the full stack"
+docker compose -f "${COMPOSE_FILE}" up -d
+./deploy/deploy.sh bootstrap
+
+echo
+echo "==> Recovery complete. Continue with vm-bootstrap.sh's runner-registration"
+echo "    step (9/9) if you haven't already registered the self-hosted runner."
