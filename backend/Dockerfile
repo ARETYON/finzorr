@@ -23,10 +23,20 @@ RUN uv sync --frozen --no-dev
 
 FROM python:3.12-slim AS runtime
 
-RUN groupadd --system app && useradd --system --gid app --no-create-home app
+# --create-home: several libraries (yfinance's cache, anything reading
+# $HOME) need a real, writable home directory — a bare --no-create-home
+# system user broke yfinance's CookieCache with a silent permission error.
+RUN groupadd --system app && useradd --system --gid app --create-home app
 
 WORKDIR /app
 COPY --from=builder --chown=app:app /app /app
+# WORKDIR creates /app as root BEFORE this COPY runs, and --chown on COPY
+# only affects the files it copies in, not the pre-existing directory
+# itself — so /app stayed root-owned (mode 755, no write for `app`) even
+# after the chowned copy landed inside it. The app user could read every
+# file but couldn't create NEW ones (storage/uploads, on first upload) at
+# the top level. Fix ownership of the directory itself explicitly.
+RUN chown app:app /app && mkdir -p /app/storage/uploads && chown -R app:app /app/storage
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
