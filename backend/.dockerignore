@@ -1,0 +1,25 @@
+# Local dev artifacts — never needed in the image
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
+
+# Secrets — never bake credentials into an image
+.env
+.env.*
+!.env.example
+
+# Test/eval/local-only data — not part of the runtime image
+tests
+evals
+drift
+storage
+
+# VCS/editor
+.git
+.gitignore
+.DS_Store

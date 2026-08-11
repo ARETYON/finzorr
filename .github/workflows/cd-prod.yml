@@ -1,0 +1,63 @@
+name: cd-prod
+
+# Build+push runs on a GitHub-hosted runner. Deploy runs on a SELF-HOSTED
+# runner installed directly on the OVH server (see deploy/vm-bootstrap.sh)
+# — no SSH from GitHub to the server at any point; the runner polls GitHub
+# outbound, same shape as the cloudflared tunnel already used for ingress.
+# Only the built-in GITHUB_TOKEN is used (GHCR push) — no deploy credential
+# lives in GitHub. See DEPLOYMENT_PLAN.md §3/§4.5 for the full rationale.
+
+on:
+  push:
+    branches: [main]
+    paths: ["backend/**", "deploy/**", ".github/workflows/cd-prod.yml"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag to deploy (sha or previous tag for rollback)"
+        required: false
+        type: string
+
+env:
+  IMAGE: ghcr.io/aretyon/finzorr-backend
+
+jobs:
+  build-and-push:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      tag: ${{ steps.tag.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve tag
+        id: tag
+        run: echo "value=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: backend
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.tag.outputs.value }}
+            ${{ env.IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: [build-and-push]
+    if: always() && (github.event_name == 'workflow_dispatch' || needs.build-and-push.result == 'success')
+    runs-on: self-hosted
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy
+        env:
+          IMAGE_TAG: ${{ inputs.tag || needs.build-and-push.outputs.tag }}
+        run: ./deploy/deploy.sh "$IMAGE_TAG"

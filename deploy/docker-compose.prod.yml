@@ -1,0 +1,84 @@
+# Production stack — six containers, no published ports anywhere. The only
+# public-facing piece is cloudflared's OUTBOUND tunnel to Cloudflare; every
+# other service is reachable only on the internal Docker network. Deployed
+# by deploy.sh (pulls ${IMAGE_TAG}, migrates, restarts, health-checks) —
+# see DEPLOYMENT_PLAN.md §3/§4/§6 for the full runbook.
+
+services:
+  api:
+    image: ghcr.io/aretyon/finzorr-backend:${IMAGE_TAG:?set IMAGE_TAG}
+    container_name: finzorr-api
+    restart: unless-stopped
+    env_file:
+      - /opt/finzorr/prod.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 1.5g
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  postgres:
+    image: pgvector/pgvector:pg16  # pgvector required by the LangGraph store's semantic index
+    container_name: finzorr-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: finzorr
+    env_file:
+      - /opt/finzorr/prod.env  # POSTGRES_PASSWORD set here (also DATABASE_URL for the api container)
+    volumes:
+      - finzorr_pgdata:/var/lib/postgresql/data
+    mem_limit: 0.7g
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finzorr"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: finzorr-redis
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    mem_limit: 0.4g
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: finzorr-qdrant
+    restart: unless-stopped
+    env_file:
+      - /opt/finzorr/prod.env  # QDRANT__SERVICE__API_KEY set here
+    volumes:
+      - finzorr_qdrant:/qdrant/storage
+    mem_limit: 0.5g
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: finzorr-ollama
+    restart: unless-stopped
+    volumes:
+      - finzorr_ollama:/root/.ollama
+    mem_limit: 3g
+    # Only the embedder + a small emergency chat model are pulled here —
+    # vm-bootstrap.sh runs `ollama pull nomic-embed-text` and the 3B
+    # fallback model once, on first bring-up.
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: finzorr-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    env_file:
+      - /opt/finzorr/prod.env  # TUNNEL_TOKEN set here
+    mem_limit: 0.1g
+    depends_on:
+      - api
+
+volumes:
+  finzorr_pgdata:
+  finzorr_qdrant:
+  finzorr_ollama:

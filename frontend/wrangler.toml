@@ -1,0 +1,10 @@
+# Cloudflare Pages project config for `wrangler pages deploy`.
+# VITE_* build-time env vars are NOT set here — Vite bakes them into the
+# static build at `npm run build` time, before this config is even read.
+# Create frontend/.env.production (gitignored, same pattern as local
+# .env.local) with VITE_API_BASE_URL and VITE_GOOGLE_CLIENT_ID before
+# building. See DEPLOYMENT_PLAN.md §4.2 for the full deploy sequence.
+
+name = "finzorr"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-08-01"
