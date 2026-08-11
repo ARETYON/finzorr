@@ -27,8 +27,9 @@ dump.rdb
 .idea/
 .vscode/
 
-# Word/doc build artifacts stay out of git (PROJECT_PLAN.md is the source)
+# Word/doc build artifacts stay out of git (the .md files are the source)
 PROJECT_PLAN.docx
 ~$*
 DEPLOYMENT_PLAN.docx
+IMPROVEMENTS_SUMMARY.docx
 drift/
