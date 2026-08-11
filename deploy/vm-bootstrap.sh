@@ -55,9 +55,21 @@ read -rp  "GOOGLE_CLIENT_ID (....apps.googleusercontent.com): " GOOGLE_CLIENT_ID
 read -rsp "TUNNEL_TOKEN (eyJ..., from the Cloudflare dashboard): " TUNNEL_TOKEN; echo
 
 echo "==> 5/9 Writing /opt/finzorr/prod.env (permissions 600, root-owned)"
-POSTGRES_PASSWORD="$(openssl rand -hex 24)"
-SESSION_SECRET="$(openssl rand -hex 32)"
-QDRANT_API_KEY="$(openssl rand -hex 16)"
+# Idempotency: if a prod.env already exists (a re-run after a partial
+# failure, e.g. Postgres already initialized its volume with a password),
+# REUSE its generated secrets rather than minting new ones that would no
+# longer match the already-initialized data. Only the 4 user-provided
+# values get refreshed on a re-run.
+EXISTING_ENV="${INSTALL_DIR}/prod.env"
+if [ -f "${EXISTING_ENV}" ]; then
+  POSTGRES_PASSWORD="$(grep -oP '^POSTGRES_PASSWORD=\K.*' "${EXISTING_ENV}")"
+  SESSION_SECRET="$(grep -oP '^SESSION_SECRET=\K.*' "${EXISTING_ENV}")"
+  QDRANT_API_KEY="$(grep -oP '^QDRANT_API_KEY=\K.*' "${EXISTING_ENV}")"
+else
+  POSTGRES_PASSWORD="$(openssl rand -hex 24)"
+  SESSION_SECRET="$(openssl rand -hex 32)"
+  QDRANT_API_KEY="$(openssl rand -hex 16)"
+fi
 cat > "${INSTALL_DIR}/prod.env" <<EOF
 APP_ENV=prod
 LOG_LEVEL=INFO
@@ -68,6 +80,8 @@ REDIS_URL=redis://redis:6379/0
 QDRANT_URL=http://qdrant:6333
 QDRANT_API_KEY=${QDRANT_API_KEY}
 QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY}
+EMBED_OLLAMA_URL=http://ollama:11434
+OLLAMA_URL=http://ollama:11434
 LLM_PROVIDER=groq
 LLM_FALLBACK_PROVIDER=gemini
 GROQ_API_KEY=${GROQ_API_KEY}
