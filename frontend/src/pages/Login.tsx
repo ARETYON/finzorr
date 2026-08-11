@@ -25,7 +25,7 @@ export default function Login() {
 
   return (
     <div
-      className={`flex h-full items-center justify-center ${
+      className={`flex h-dvh items-center justify-center ${
         theme === 'light' ? 'bg-gradient-to-b from-slate-50 to-brand-50' : ''
       }`}
     >

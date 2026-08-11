@@ -138,7 +138,7 @@ export default function MessageInput({
   }
 
   return (
-    <div className="border-t border-line bg-panel p-3">
+    <div className="border-t border-line bg-panel px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
       {attachment && (
         <div className="mx-auto mb-2 flex max-w-3xl">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-chip px-2.5 py-1 text-[11px] text-ink-mid">

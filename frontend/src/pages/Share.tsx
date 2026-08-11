@@ -20,20 +20,20 @@ export default function Share() {
 
   if (error) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-ink-faint">
+      <div className="flex h-dvh items-center justify-center text-sm text-ink-faint">
         This share link is invalid or has been removed.
       </div>
     )
   }
   if (!chat) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-ink-faint">
+      <div className="flex h-dvh items-center justify-center text-sm text-ink-faint">
         Loading…
       </div>
     )
   }
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="h-dvh overflow-y-auto">
       <header className="border-b border-line bg-panel px-4 py-3">
         <div className="mx-auto flex max-w-3xl items-center justify-between">
           <h1 className="app-title truncate text-sm font-semibold text-ink-strong">

@@ -128,14 +128,14 @@ export default function ChatSidebar({ watchlistRefreshKey, open, onClose }: Chat
                 </button>
                 <button
                   onClick={() => startEdit(s.id, s.title)}
-                  className="hidden shrink-0 text-ink-faint hover:text-ink-mid group-hover:block"
+                  className="shrink-0 rounded p-1 text-ink-faint hover:text-ink-mid md:hidden md:group-hover:block"
                   aria-label="Rename chat"
                 >
                   <Pencil size={13} />
                 </button>
                 <button
                   onClick={() => void remove(s.id)}
-                  className="hidden shrink-0 text-ink-faint hover:text-danger group-hover:block"
+                  className="shrink-0 rounded p-1 text-ink-faint hover:text-danger md:hidden md:group-hover:block"
                   aria-label="Delete chat"
                 >
                   <Trash2 size={13} />

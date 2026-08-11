@@ -27,7 +27,7 @@ export default function ArtifactPanel({
     URL.revokeObjectURL(a.href)
   }
   return (
-    <aside className="flex w-[26rem] shrink-0 flex-col border-l border-line bg-panel">
+    <aside className="fixed inset-0 z-40 flex flex-col border-l border-line bg-panel md:static md:z-auto md:w-[26rem] md:shrink-0">
       <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
         <h2 className="app-title truncate text-sm font-semibold text-ink-strong">
           {artifact.title}

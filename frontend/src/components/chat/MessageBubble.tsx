@@ -50,7 +50,7 @@ export default function MessageBubble({ message, onRegenerate, onEdit }: Props) 
             {onEdit && (
               <button
                 onClick={() => onEdit(message.content)}
-                className="mt-0.5 shrink-0 opacity-0 transition-opacity group-hover/msg:opacity-70 hover:!opacity-100"
+                className="mt-0.5 shrink-0 opacity-70 transition-opacity hover:!opacity-100 md:opacity-0 md:group-hover/msg:opacity-70"
                 aria-label="Edit and resend"
               >
                 <Pencil size={12} />

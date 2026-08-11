@@ -15,7 +15,7 @@ function Protected({ children }: { children: ReactElement }) {
   const { user, loading } = useAuthStore()
   if (loading) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-ink-faint">
+      <div className="flex h-dvh items-center justify-center text-sm text-ink-faint">
         Loading…
       </div>
     )

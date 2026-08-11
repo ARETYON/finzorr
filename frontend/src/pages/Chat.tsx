@@ -112,7 +112,7 @@ export default function Chat() {
   const activeTitle = sessions.find((s) => s.id === activeSessionId)?.title ?? 'finzorr.ai'
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-dvh">
       <ChatSidebar
         watchlistRefreshKey={watchlistRefreshKey}
         open={sidebarOpen}

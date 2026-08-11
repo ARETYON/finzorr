@@ -111,7 +111,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
         aria-modal="true"
         aria-labelledby="settings-title"
         ref={dialogRef}
-        className="clip-panel fui-brackets static w-full max-w-md rounded-2xl border border-line bg-panel p-6 text-inherit shadow-lg"
+        className="clip-panel fui-brackets static max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-2xl border border-line bg-panel p-6 text-inherit shadow-lg"
         onKeyDown={onDialogKeyDown}
       >
         <div className="mb-4 flex items-center justify-between">
@@ -147,7 +147,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                 <span className="flex-1 truncate" title={m.text}>• {m.text}</span>
                 <button
                   onClick={() => void removeMemory(m.id)}
-                  className="hidden text-ink-faint hover:text-danger group-hover:block group-focus-within:block focus:block"
+                  className="rounded p-1 text-ink-faint hover:text-danger md:hidden md:group-hover:block md:group-focus-within:block md:focus:block"
                   aria-label="Forget this"
                 >
                   <Trash2 size={11} />
@@ -164,7 +164,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                 <span className="flex-1 truncate" title={p.system_prompt}>• {p.name}</span>
                 <button
                   onClick={() => void removePersona(p.id)}
-                  className="hidden text-ink-faint hover:text-danger group-hover:block group-focus-within:block focus:block"
+                  className="rounded p-1 text-ink-faint hover:text-danger md:hidden md:group-hover:block md:group-focus-within:block md:focus:block"
                   aria-label={`Delete ${p.name}`}
                 >
                   <Trash2 size={11} />

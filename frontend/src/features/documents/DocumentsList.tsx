@@ -66,7 +66,7 @@ export default function DocumentsList({ docs, busy, onUpload, onDelete }: Docume
             </span>
             <button
               onClick={() => onDelete(d.id)}
-              className="ml-auto hidden text-ink-faint hover:text-danger group-hover:block"
+              className="ml-auto rounded p-1 text-ink-faint hover:text-danger md:hidden md:group-hover:block"
               aria-label={`Delete ${d.filename}`}
             >
               <Trash2 size={11} />
