@@ -30,6 +30,7 @@ grep -q '^OLLAMA_URL=' "${ENV_FILE}" || echo "OLLAMA_URL=http://ollama:11434" >>
 
 echo "==> 2/3 Re-running glossary + fundamentals seeding"
 cd "${INSTALL_DIR}"
+export IMAGE_TAG=bootstrap  # matches the tag vm-bootstrap.sh built on first run
 docker compose -f "${COMPOSE_FILE}" run --rm api python -m app.rag.ingest_corpus
 docker compose -f "${COMPOSE_FILE}" run --rm api python -m app.nl2sql.jobs.refresh_fundamentals
 
