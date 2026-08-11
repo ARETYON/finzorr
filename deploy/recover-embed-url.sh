@@ -36,7 +36,9 @@ docker compose -f "${COMPOSE_FILE}" run --rm api python -m app.nl2sql.jobs.refre
 
 echo "==> 3/3 Bringing up the full stack"
 docker compose -f "${COMPOSE_FILE}" up -d
-./deploy/deploy.sh bootstrap
+# NOT deploy.sh — the bootstrap tag is local-only (never pushed to GHCR),
+# so deploy.sh's `docker compose pull` would correctly get denied.
+./deploy/wait-healthy.sh finzorr-api 300
 
 echo
 echo "==> Recovery complete. Continue with vm-bootstrap.sh's runner-registration"

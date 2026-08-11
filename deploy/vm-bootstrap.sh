@@ -112,7 +112,10 @@ docker compose -f deploy/docker-compose.prod.yml run --rm api python -m app.nl2s
 
 echo "==> 8/9 Starting the full stack"
 docker compose -f deploy/docker-compose.prod.yml up -d
-./deploy/deploy.sh bootstrap  # reuses the health-check wait loop
+# NOT deploy.sh here — the bootstrap tag is a LOCAL-only image (never
+# pushed to GHCR), so deploy.sh's `docker compose pull` would correctly
+# get denied. Just wait for the already-started container to go healthy.
+./deploy/wait-healthy.sh finzorr-api 300
 
 echo "==> 9/9 Registering GitHub Actions self-hosted runner"
 if ! gh auth status >/dev/null 2>&1; then

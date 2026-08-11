@@ -30,17 +30,4 @@ echo "==> Restarting api"
 docker compose -f "$COMPOSE_FILE" up -d api
 
 echo "==> Waiting for health check"
-elapsed=0
-for _ in $(seq 1 30); do
-  status="$(docker inspect --format='{{.State.Health.Status}}' finzorr-api 2>/dev/null || echo starting)"
-  if [ "$status" = "healthy" ]; then
-    echo "==> Healthy after ${elapsed}s"
-    exit 0
-  fi
-  sleep 10
-  elapsed=$((elapsed + 10))
-done
-
-echo "==> FAILED: api did not become healthy within 5 minutes" >&2
-docker compose -f "$COMPOSE_FILE" logs api --tail 100 >&2
-exit 1
+"$SCRIPT_DIR/wait-healthy.sh" finzorr-api 300
