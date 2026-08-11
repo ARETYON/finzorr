@@ -36,6 +36,8 @@ dependencies = [
     "python-pptx>=1.0.2",
     "openpyxl>=3.1.5",
     "xlrd>=2.0.2",
+    "pytesseract>=0.3.13",
+    "pillow>=10.4",
 ]
 
 [dependency-groups]
@@ -91,6 +93,7 @@ module = [
     "pptx.*",
     "openpyxl.*",
     "xlrd.*",
+    "pytesseract.*",
     "bs4.*",
     "qdrant_client.*",
     "langgraph.*",

@@ -1,11 +1,11 @@
 """Document -> chunks -> embeddings -> Qdrant (per-user tenant).
 
-Supported: PDF (PyMuPDF), DOCX (python-docx), PPTX (python-pptx),
-XLSX (openpyxl), legacy XLS (xlrd), CSV/TXT/MD (plain decode). Legacy .ppt
-has no viable free parser — rejected with a "save as .pptx" message. OCR
-for scanned PDFs is a Phase-2 addition. Extractors return LABELED
-pseudo-pages [(label, text)] so citations read naturally per format:
-`file.pdf · p.3`, `deck.pptx · slide 4`, `book.xlsx · sheet:Revenue`.
+Supported: PDF (PyMuPDF, with a Tesseract OCR fallback per page for scanned/
+image-only content), DOCX (python-docx), PPTX (python-pptx), XLSX
+(openpyxl), legacy XLS (xlrd), CSV/TXT/MD (plain decode). Legacy .ppt has no
+viable free parser — rejected with a "save as .pptx" message. Extractors
+return LABELED pseudo-pages [(label, text)] so citations read naturally per
+format: `file.pdf · p.3`, `deck.pptx · slide 4`, `book.xlsx · sheet:Revenue`.
 """
 
 import asyncio
@@ -25,6 +25,12 @@ from app.rag.embeddings import embed_texts
 
 _EMBED_BATCH = 16
 _CSV_MAX_ROWS = 2000
+# Below this many characters, a page's native text layer is treated as
+# unusable and OCR is attempted instead — not just empty pages, since a
+# scanned page can still carry a few real characters (e.g. a printed stamp
+# or footer) while the actual page content is entirely image-only.
+_OCR_TEXT_THRESHOLD = 40
+_OCR_DPI = 300
 
 
 class DocumentTooLargeError(Exception):
@@ -38,14 +44,49 @@ class UnsupportedDocumentError(Exception):
 LabeledPages = list[tuple[str, str]]  # (locator label, text)
 
 
+def _ocr_page(page: "fitz.Page") -> str:
+    """Render a page to an image and OCR it. Never raises — a missing/broken
+    Tesseract install must degrade to empty OCR text, not fail the upload.
+    """
+    try:
+        import pytesseract
+        from PIL import Image
+
+        pix = page.get_pixmap(dpi=_OCR_DPI)
+        img = Image.open(io.BytesIO(pix.tobytes("png")))
+        return str(pytesseract.image_to_string(img))
+    except Exception as exc:  # noqa: BLE001 — OCR is a best-effort fallback
+        log.warning("document.ocr_failed", page=page.number + 1, error=str(exc))
+        return ""
+
+
 def extract_pages(pdf_bytes: bytes) -> LabeledPages:
-    """Extract text per page; raises DocumentTooLargeError over the page cap."""
+    """Extract text per page; raises DocumentTooLargeError over the page cap.
+
+    A page whose native text layer is below _OCR_TEXT_THRESHOLD chars falls
+    back to OCR (scanned/image-only pages carry no extractable text layer at
+    all); the OCR result is used only if it's actually richer than what was
+    already there, so a genuinely blank page doesn't get polluted with OCR
+    noise on a near-empty image.
+    """
     with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
         if doc.page_count > settings.MAX_UPLOAD_PAGES:
             raise DocumentTooLargeError(
                 f"{doc.page_count} pages exceeds the {settings.MAX_UPLOAD_PAGES}-page limit"
             )
-        return [(f"p.{i}", page.get_text()) for i, page in enumerate(doc, start=1)]
+        pages: LabeledPages = []
+        ocr_pages = 0
+        for i, page in enumerate(doc, start=1):
+            text = page.get_text()
+            if len(text.strip()) < _OCR_TEXT_THRESHOLD:
+                ocr_text = _ocr_page(page)
+                if len(ocr_text.strip()) > len(text.strip()):
+                    text = ocr_text
+                    ocr_pages += 1
+            pages.append((f"p.{i}", text))
+        if ocr_pages:
+            log.info("document.ocr_used", pages=ocr_pages, total_pages=doc.page_count)
+        return pages
 
 
 def extract_docx(data: bytes) -> LabeledPages:

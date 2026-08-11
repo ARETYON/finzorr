@@ -27,8 +27,10 @@ Security posture: see [SECURITY_REVIEW.md](SECURITY_REVIEW.md) (OWASP LLM Top-10
 
 ## Run locally (dev)
 
-Prerequisites: Docker Desktop, [uv](https://docs.astral.sh/uv/), Node 20+, and
-[Ollama](https://ollama.com) with the dev models pulled:
+Prerequisites: Docker Desktop, [uv](https://docs.astral.sh/uv/), Node 20+,
+[Tesseract OCR](https://tesseract-ocr.github.io/) (`brew install tesseract`
+/ `apt-get install tesseract-ocr` — scanned-PDF fallback in document
+ingest), and [Ollama](https://ollama.com) with the dev models pulled:
 
 ```bash
 ollama pull qwen2.5:14b-instruct     # chat + routing (dev default)

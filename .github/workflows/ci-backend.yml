@@ -31,6 +31,8 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
+      - name: Install Tesseract OCR (scanned-PDF fallback)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr
       - name: Install dependencies
         run: uv sync --frozen
       - name: Lint (ruff)

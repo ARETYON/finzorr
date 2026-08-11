@@ -152,6 +152,59 @@ def test_pdf_over_page_cap_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
         extract_pages(_pdf_bytes(["one", "two"]))
 
 
+def _scanned_pdf_bytes(text: str) -> bytes:
+    """A page with NO text layer — real content only exists as a rendered
+    image, same shape as an actual scanned document (zero-length get_text()).
+    """
+    src = fitz.open()
+    src_page = src.new_page()
+    src_page.insert_text((72, 72), text, fontsize=14)
+    pix = src_page.get_pixmap(dpi=200)
+
+    scanned = fitz.open()
+    img_page = scanned.new_page()
+    img_page.insert_image(img_page.rect, pixmap=pix)
+    data: bytes = scanned.tobytes()
+    scanned.close()
+    src.close()
+    return data
+
+
+def test_scanned_pdf_falls_back_to_ocr() -> None:
+    pages = extract_pages(_scanned_pdf_bytes("Ruby brings vitality and confidence"))
+    assert len(pages) == 1
+    label, text = pages[0]
+    assert label == "p.1"
+    assert "ruby" in text.lower()
+    assert "vitality" in text.lower()
+
+
+def test_normal_pdf_text_layer_skips_ocr(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A page with a real, substantial text layer must never trigger OCR --
+    OCR is CPU-expensive and the native text layer is already authoritative.
+    """
+
+    def _fail_if_called(*_args: Any, **_kwargs: Any) -> str:
+        raise AssertionError("OCR should not run when a real text layer exists")
+
+    monkeypatch.setattr("pytesseract.image_to_string", _fail_if_called)
+    long_text = "This page has a completely normal, substantial text layer. " * 3
+    pages = extract_pages(_pdf_bytes([long_text]))
+    assert long_text.strip()[:20] in pages[0][1]
+
+
+def test_ocr_failure_degrades_gracefully(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A missing/broken Tesseract install must not fail the whole upload --
+    the page just keeps whatever (possibly empty) native text it had.
+    """
+    monkeypatch.setattr(
+        "pytesseract.image_to_string",
+        lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("tesseract not found")),
+    )
+    pages = extract_pages(_scanned_pdf_bytes("unreachable without OCR"))
+    assert pages == [("p.1", "")]
+
+
 # ---------------------------------------------------------------- chunk_pages
 
 

@@ -23,6 +23,14 @@ RUN uv sync --frozen --no-dev
 
 FROM python:3.12-slim AS runtime
 
+# tesseract-ocr: scanned/image-only PDF fallback in app/documents/ingest.py.
+# pytesseract shells out to the `tesseract` binary — the apt package ships
+# both it and the English (+osd) trained data at its compiled-in default
+# path, so no TESSDATA_PREFIX override is needed.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tesseract-ocr \
+    && rm -rf /var/lib/apt/lists/*
+
 # --create-home: several libraries (yfinance's cache, anything reading
 # $HOME) need a real, writable home directory — a bare --no-create-home
 # system user broke yfinance's CookieCache with a silent permission error.
