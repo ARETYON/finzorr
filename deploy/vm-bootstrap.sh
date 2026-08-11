@@ -105,6 +105,7 @@ docker compose -f deploy/docker-compose.prod.yml up -d postgres redis qdrant oll
 echo "    waiting for postgres..."
 until docker compose -f deploy/docker-compose.prod.yml exec -T postgres pg_isready -U finzorr >/dev/null 2>&1; do sleep 2; done
 docker compose -f deploy/docker-compose.prod.yml run --rm api alembic upgrade head
+docker compose -f deploy/docker-compose.prod.yml run --rm api python -m app.graph.setup_checkpointer
 docker compose -f deploy/docker-compose.prod.yml exec -T ollama ollama pull nomic-embed-text:v1.5
 docker compose -f deploy/docker-compose.prod.yml exec -T ollama ollama pull llama3.2:3b-instruct-fp16
 docker compose -f deploy/docker-compose.prod.yml run --rm api python -m app.rag.ingest_corpus

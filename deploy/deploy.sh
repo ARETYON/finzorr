@@ -26,6 +26,10 @@ docker compose -f "$COMPOSE_FILE" pull api
 echo "==> Running migrations"
 docker compose -f "$COMPOSE_FILE" run --rm api alembic upgrade head
 
+echo "==> Setting up checkpointer schema (once, before workers start — see"
+echo "    app/graph/setup_checkpointer.py for why this can't be lazy)"
+docker compose -f "$COMPOSE_FILE" run --rm api python -m app.graph.setup_checkpointer
+
 echo "==> Restarting api"
 docker compose -f "$COMPOSE_FILE" up -d api
 
