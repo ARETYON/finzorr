@@ -20,12 +20,13 @@ from app.ai.completion import stream
 from app.core.logging import log
 from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
 from app.db.session import SessionLocal
-from app.graph.nodes.common import step_context, task_for, with_instructions
 from app.graph.state import AssistantState
 from app.graph.streaming import emit_frame
 from app.models.price_alert import PriceAlert
 from app.models.scheduled_task import ScheduledTask
 from app.models.watchlist_item import WatchlistItem
+from app.specialists.base import Specialist
+from app.specialists.common import step_context, task_for, with_instructions
 
 _JSON_BLOCK = re.compile(r"\{.*\}", re.DOTALL)
 
@@ -176,3 +177,7 @@ async def memory_node(state: AssistantState) -> AssistantState:
     message = str(parsed.get("message", "Done."))
     emit_frame({"type": "token", "delta": message})
     return {"final_text": message, "route": "memory", "actions": applied}
+
+
+# Structural conformance check — memory_node must satisfy the Specialist protocol.
+_: Specialist = memory_node

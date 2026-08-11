@@ -26,10 +26,11 @@ from app.ai.completion import stream
 from app.core.logging import log
 from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
 from app.core.request_context import user_context
-from app.graph.nodes.common import step_context, task_for, with_instructions
-from app.graph.nodes.general_chat import build_history
 from app.graph.state import AssistantState
 from app.graph.streaming import emit_frame
+from app.specialists.base import Specialist
+from app.specialists.common import step_context, task_for, with_instructions
+from app.specialists.general_chat import build_history
 from app.tools_registry import (
     market_tools,  # noqa: F401 — registers the family
     portfolio_tools,  # noqa: F401 — registers analyze_portfolio
@@ -308,3 +309,8 @@ async def tools_exec_node(state: AssistantState) -> AssistantState:
 def tools_next(state: AssistantState) -> str:
     """Conditional edge: execute pending calls, or report to the plan walker."""
     return "tools_exec" if state.get("pending_tool_calls") else "advance"
+
+
+# Structural conformance check — both tools loop nodes must satisfy Specialist.
+_tools_plan_conforms: Specialist = tools_plan_node
+_tools_exec_conforms: Specialist = tools_exec_node

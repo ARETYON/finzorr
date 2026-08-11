@@ -6,10 +6,11 @@ from app.ai.base import SystemMessage, UserMessage
 from app.ai.completion import stream
 from app.core.logging import log
 from app.core.prompt_registry import render_agent_prompt
-from app.graph.nodes.common import step_context, task_for, with_instructions
 from app.graph.state import AssistantState
 from app.graph.streaming import emit_frame
 from app.nl2sql.agent import rows_preview, run_query
+from app.specialists.base import Specialist
+from app.specialists.common import step_context, task_for, with_instructions
 
 STALE_EMPTY_HINT = (
     "The screener database appears to be empty — the daily fundamentals refresh "
@@ -74,3 +75,7 @@ async def nl2sql_node(state: AssistantState) -> AssistantState:
         "data_as_of": datetime.now(UTC).isoformat(),
         "sources": ["finzorr screener (daily refresh)"],
     }
+
+
+# Structural conformance check — nl2sql_node must satisfy the Specialist protocol.
+_: Specialist = nl2sql_node

@@ -37,14 +37,14 @@ class TestCappedMessages:
 
 class TestWithInstructions:
     def test_appends_when_present(self) -> None:
-        from app.graph.nodes.common import with_instructions
+        from app.specialists.common import with_instructions
 
         out = with_instructions("BASE", {"user_instructions": "reply briefly"})
         assert out.startswith("BASE")
         assert "reply briefly" in out
 
     def test_noop_when_absent(self) -> None:
-        from app.graph.nodes.common import with_instructions
+        from app.specialists.common import with_instructions
 
         assert with_instructions("BASE", {}) == "BASE"
 
@@ -120,7 +120,7 @@ class TestSnippetFencing:
         fence them, not only the fetched page bodies."""
         import inspect
 
-        from app.graph.nodes import research, web_search
+        from app.specialists import research, web_search
 
         assert "wrap_untrusted" in inspect.getsource(web_search.web_search_node)
         assert "wrap_untrusted" in inspect.getsource(research.research_synthesize_node)

@@ -50,7 +50,7 @@ async def test_search_filter_carries_exactly_the_passed_tenants(
 async def test_rag_node_requests_only_glossary_and_own_tenant(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.graph.nodes import rag as rag_mod
+    from app.specialists import rag as rag_mod
 
     seen_tenants: list[list[str]] = []
 
@@ -85,7 +85,7 @@ async def test_debug_pseudo_user_gets_no_private_tenant(
 ) -> None:
     """The dev /debug route runs nodes with user_id='debug' — it must search
     the glossary ONLY, never a private tenant named 'debug'."""
-    from app.graph.nodes import rag as rag_mod
+    from app.specialists import rag as rag_mod
 
     seen: list[list[str]] = []
 
@@ -126,7 +126,7 @@ async def test_glossary_only_hits_never_touch_db_or_storage(
 ) -> None:
     """M8: zero-doc / glossary-only users take the exact legacy path —
     no Document query, no storage read."""
-    from app.graph.nodes import rag as rag_mod
+    from app.specialists import rag as rag_mod
 
     touched = {"db": False}
 
@@ -149,7 +149,7 @@ async def test_small_doc_expands_to_full_labeled_text(
 ) -> None:
     import uuid as uuid_module
 
-    from app.graph.nodes import rag as rag_mod
+    from app.specialists import rag as rag_mod
 
     user_id = str(uuid_module.uuid4())
     doc_id = str(uuid_module.uuid4())
@@ -204,7 +204,7 @@ async def test_large_doc_keeps_excerpt_behavior(
 ) -> None:
     import uuid as uuid_module
 
-    from app.graph.nodes import rag as rag_mod
+    from app.specialists import rag as rag_mod
 
     user_id = str(uuid_module.uuid4())
 
@@ -242,7 +242,7 @@ async def test_expansion_failure_falls_back_to_excerpts(
 ) -> None:
     import uuid as uuid_module
 
-    from app.graph.nodes import rag as rag_mod
+    from app.specialists import rag as rag_mod
 
     user_id = str(uuid_module.uuid4())
 
@@ -267,7 +267,7 @@ async def test_expansion_failure_falls_back_to_excerpts(
 async def test_full_doc_char_cap_enforced(monkeypatch: pytest.MonkeyPatch) -> None:
     import uuid as uuid_module
 
-    from app.graph.nodes import rag as rag_mod
+    from app.specialists import rag as rag_mod
 
     user_id = str(uuid_module.uuid4())
 
@@ -319,7 +319,7 @@ async def test_single_unrelated_hit_does_not_expand(monkeypatch: pytest.MonkeyPa
     whole-document intent may trigger expansion."""
     import uuid as uuid_module
 
-    from app.graph.nodes import rag as rag_mod
+    from app.specialists import rag as rag_mod
 
     user_id = str(uuid_module.uuid4())
     touched = {"db": False}
@@ -346,7 +346,7 @@ async def test_multiple_hits_from_same_doc_expand_without_intent_words(
     its own — no whole-document-intent phrasing required."""
     import uuid as uuid_module
 
-    from app.graph.nodes import rag as rag_mod
+    from app.specialists import rag as rag_mod
 
     user_id = str(uuid_module.uuid4())
     doc_id = str(uuid_module.uuid4())
@@ -394,7 +394,7 @@ class TestWholeDocIntentAnchoring:
     a document reference (matches the guard's anchoring discipline)."""
 
     def test_document_referential_phrasing_matches(self) -> None:
-        from app.graph.nodes.rag import _WHOLE_DOC_INTENT
+        from app.specialists.rag import _WHOLE_DOC_INTENT
 
         for query in (
             "summarize this document",
@@ -407,7 +407,7 @@ class TestWholeDocIntentAnchoring:
             assert _WHOLE_DOC_INTENT.search(query), query
 
     def test_unrelated_phrasing_does_not_match(self) -> None:
-        from app.graph.nodes.rag import _WHOLE_DOC_INTENT
+        from app.specialists.rag import _WHOLE_DOC_INTENT
 
         for query in (
             "give me an overview of Q3 margins",
@@ -424,8 +424,8 @@ async def test_rag_node_tags_invalid_citation_without_mangling_answer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from app.core import trace as trace_mod
-    from app.graph.nodes import rag as rag_mod
     from app.rag.vector_store import Hit
+    from app.specialists import rag as rag_mod
 
     tagged: list[str] = []
     monkeypatch.setattr(trace_mod, "tag", lambda *t: tagged.extend(t))
@@ -455,8 +455,8 @@ async def test_rag_node_tags_invalid_citation_without_mangling_answer(
 
 
 async def test_rag_node_tags_no_citations_despite_hits(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.graph.nodes import rag as rag_mod
     from app.rag.vector_store import Hit
+    from app.specialists import rag as rag_mod
 
     tagged: list[str] = []
     monkeypatch.setattr(rag_mod, "tag", lambda *t: tagged.extend(t))
@@ -483,8 +483,8 @@ async def test_rag_node_tags_no_citations_despite_hits(monkeypatch: pytest.Monke
 async def test_rag_node_no_citation_tag_when_answer_cites_properly(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.graph.nodes import rag as rag_mod
     from app.rag.vector_store import Hit
+    from app.specialists import rag as rag_mod
 
     tagged: list[str] = []
     monkeypatch.setattr(rag_mod, "tag", lambda *t: tagged.extend(t))
@@ -514,7 +514,7 @@ async def test_rag_node_no_false_positive_on_honest_refusal(
 ) -> None:
     """Zero hits -> the honest 'I couldn't find this' degrade path must
     never trigger the no-citations hallucination tag."""
-    from app.graph.nodes import rag as rag_mod
+    from app.specialists import rag as rag_mod
 
     tagged: list[str] = []
     monkeypatch.setattr(rag_mod, "tag", lambda *t: tagged.extend(t))
@@ -548,8 +548,8 @@ async def test_rag_node_flags_document_embedded_injection_attempt(
     stays inside wrap_untrusted's fence in the prompt actually sent to the
     model, proving the two defenses compose (fencing neutralizes it,
     tagging makes the attempt visible)."""
-    from app.graph.nodes import rag as rag_mod
     from app.rag.vector_store import Hit
+    from app.specialists import rag as rag_mod
 
     tagged: list[str] = []
     monkeypatch.setattr(rag_mod, "tag", lambda *t: tagged.extend(t))
@@ -584,8 +584,8 @@ async def test_rag_node_flags_document_embedded_injection_attempt(
 async def test_rag_node_benign_document_never_tags_injection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.graph.nodes import rag as rag_mod
     from app.rag.vector_store import Hit
+    from app.specialists import rag as rag_mod
 
     tagged: list[str] = []
     monkeypatch.setattr(rag_mod, "tag", lambda *t: tagged.extend(t))

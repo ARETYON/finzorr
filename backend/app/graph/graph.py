@@ -30,25 +30,25 @@ from sqlalchemy.exc import InterfaceError, OperationalError
 from app.core.config import settings
 from app.core.logging import log
 from app.core.otel import span
-from app.graph.nodes.advance import advance_node, after_step
-from app.graph.nodes.compose import compose_node
-from app.graph.nodes.general_chat import general_chat_node
-from app.graph.nodes.memory import memory_node
-from app.graph.nodes.nl2sql import nl2sql_node
-from app.graph.nodes.parallel import join_node, spec_runner_node
-from app.graph.nodes.persist import persist_node
-from app.graph.nodes.rag import rag_node
-from app.graph.nodes.replan import replan_node
-from app.graph.nodes.research import (
+from app.graph.state import AssistantState
+from app.graph.supervisor import ROUTES, plan_and_route, route_selector
+from app.specialists.advance import advance_node, after_step
+from app.specialists.compose import compose_node
+from app.specialists.general_chat import general_chat_node
+from app.specialists.memory import memory_node
+from app.specialists.nl2sql import nl2sql_node
+from app.specialists.parallel import join_node, spec_runner_node
+from app.specialists.persist import persist_node
+from app.specialists.rag import rag_node
+from app.specialists.replan import replan_node
+from app.specialists.research import (
     research_plan_node,
     research_read_node,
     research_search_node,
     research_synthesize_node,
 )
-from app.graph.nodes.tools import tools_exec_node, tools_next, tools_plan_node
-from app.graph.nodes.web_search import web_search_node
-from app.graph.state import AssistantState
-from app.graph.supervisor import ROUTES, plan_and_route, route_selector
+from app.specialists.tools import tools_exec_node, tools_next, tools_plan_node
+from app.specialists.web_search import web_search_node
 
 # The "tools" route enters the checkpointed plan⇄exec loop at tools_plan.
 _ROUTE_ENTRY = {"tools": "tools_plan", "research": "research_plan"}

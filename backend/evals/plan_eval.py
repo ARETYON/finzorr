@@ -18,9 +18,9 @@ from typing import Any
 
 
 def run_offline() -> int:
-    from app.graph.nodes.advance import after_step
-    from app.graph.nodes.parallel import PARALLEL_ROUTES
     from app.graph.supervisor import PARALLELIZABLE, validate_plan
+    from app.specialists.advance import after_step
+    from app.specialists.parallel import PARALLEL_ROUTES
 
     failures: list[str] = []
     checks_run = 0
@@ -79,7 +79,7 @@ def run_offline() -> int:
 
     # --- failure flow through the real advance node
     async def failure_flow() -> tuple[Any, Any]:
-        from app.graph.nodes.advance import advance_node
+        from app.specialists.advance import advance_node
 
         base: AssistantState = {
             "plan_steps": steps2,
@@ -100,7 +100,7 @@ def run_offline() -> int:
 
     # --- per-step reset discipline (arming a next step must clean the slate)
     async def arm() -> Any:
-        from app.graph.nodes.advance import advance_node
+        from app.specialists.advance import advance_node
 
         armed_input: AssistantState = {
             "plan_steps": steps2,

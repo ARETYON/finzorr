@@ -58,7 +58,7 @@ class TestValidatePlan:
 
 class TestPlanStateMachine:
     async def test_advance_arms_next_step(self) -> None:
-        from app.graph.nodes.advance import advance_node
+        from app.specialists.advance import advance_node
 
         state: dict[str, Any] = {
             "plan_steps": [
@@ -80,7 +80,7 @@ class TestPlanStateMachine:
         assert out["tool_iterations"] == 0  # fresh tool loop per step
 
     async def test_advance_final_step_records_only(self) -> None:
-        from app.graph.nodes.advance import advance_node
+        from app.specialists.advance import advance_node
 
         state: dict[str, Any] = {
             "plan_steps": [{"route": "tools", "task": "t"}],
@@ -95,8 +95,8 @@ class TestPlanStateMachine:
         assert "route" not in out  # nothing more to arm
 
     def test_after_step_routing(self) -> None:
-        from app.graph.nodes.advance import after_step
         from app.graph.state import AssistantState
+        from app.specialists.advance import after_step
 
         steps = [{"route": "web_search", "task": "a"}, {"route": "tools", "task": "b"}]
         mid: AssistantState = {"plan_steps": steps, "plan_index": 1, "step_outputs": [{}]}
@@ -117,7 +117,7 @@ class TestCompose:
     async def test_merges_citations_and_degrades_without_llm(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from app.graph.nodes import compose
+        from app.specialists import compose
 
         async def boom(*_a: Any, **_k: Any) -> Any:
             raise ConnectionError("no llm in tests")
@@ -190,7 +190,7 @@ class TestHitlDegraded:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         from app.core.config import settings
-        from app.graph.nodes import tools as tools_mod
+        from app.specialists import tools as tools_mod
 
         monkeypatch.setattr(settings, "HITL_TOOLS", "run_python")
         out = await tools_mod.tools_exec_node(
@@ -252,7 +252,7 @@ class TestIdempotentPersist:
         — claim-before-write would suppress the RetryPolicy's second attempt."""
         import inspect
 
-        from app.graph.nodes import persist
+        from app.specialists import persist
 
         source = inspect.getsource(persist.persist_node)
         assert source.index("_already_persisted") < source.index("_mark_persisted")

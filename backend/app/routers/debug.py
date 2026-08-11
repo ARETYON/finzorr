@@ -33,32 +33,32 @@ async def run_route(route_name: str, q: str) -> dict[str, Any]:
     from app.graph.state import AssistantState
 
     nodes: dict[str, Any] = {}
-    from app.graph.nodes.general_chat import general_chat_node
+    from app.specialists.general_chat import general_chat_node
 
     nodes["general_chat"] = general_chat_node
-    from app.graph.nodes.tools import tools_plan_node
+    from app.specialists.tools import tools_plan_node
 
     nodes["tools"] = tools_plan_node
     try:
-        from app.graph.nodes.nl2sql import nl2sql_node
+        from app.specialists.nl2sql import nl2sql_node
 
         nodes["nl2sql"] = nl2sql_node
     except ImportError:
         pass
     try:
-        from app.graph.nodes.rag import rag_node
+        from app.specialists.rag import rag_node
 
         nodes["rag"] = rag_node
     except ImportError:
         pass
     try:
-        from app.graph.nodes.web_search import web_search_node
+        from app.specialists.web_search import web_search_node
 
         nodes["web_search"] = web_search_node
     except ImportError:
         pass
     try:
-        from app.graph.nodes.memory import memory_node
+        from app.specialists.memory import memory_node
 
         nodes["memory"] = memory_node
     except ImportError:

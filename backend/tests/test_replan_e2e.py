@@ -25,11 +25,11 @@ async def test_failed_step_replans_through_compiled_graph(
     from app.graph import supervisor as supervisor_mod
     from app.graph import turn as turn_mod
     from app.graph.graph import close_graph
-    from app.graph.nodes import compose as compose_mod
-    from app.graph.nodes import general_chat as gc_mod
-    from app.graph.nodes import replan as replan_mod
-    from app.graph.nodes import web_search as ws_mod
     from app.graph.turn import run_turn
+    from app.specialists import compose as compose_mod
+    from app.specialists import general_chat as gc_mod
+    from app.specialists import replan as replan_mod
+    from app.specialists import web_search as ws_mod
 
     async def fake_plan(*_a: Any, **_k: Any) -> str:
         return (

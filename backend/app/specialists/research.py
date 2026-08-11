@@ -18,9 +18,10 @@ from app.core.logging import log
 from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
 from app.core.untrusted import wrap_untrusted
 from app.core.web_search import search as web_search
-from app.graph.nodes.common import step_context, task_for, with_instructions
 from app.graph.state import AssistantState
 from app.graph.streaming import emit_frame
+from app.specialists.base import Specialist
+from app.specialists.common import step_context, task_for, with_instructions
 
 MAX_SUBQUESTIONS = 4
 MAX_PAGE_FETCHES = 4
@@ -200,3 +201,10 @@ async def research_synthesize_node(state: AssistantState) -> AssistantState:
         )
         result["step_error"] = True
     return result
+
+
+# Structural conformance check — every research-stage node must satisfy Specialist.
+_research_plan_conforms: Specialist = research_plan_node
+_research_search_conforms: Specialist = research_search_node
+_research_read_conforms: Specialist = research_read_node
+_research_synthesize_conforms: Specialist = research_synthesize_node

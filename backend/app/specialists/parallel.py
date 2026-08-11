@@ -16,6 +16,7 @@ from typing import Any
 from app.core.logging import log
 from app.core.otel import span
 from app.graph.state import AssistantState
+from app.specialists.base import Specialist
 
 # Send payloads REPLACE the node input (no merge with graph state), so the
 # fan-out overlay must carry full state; these are the routes whose node fns
@@ -29,10 +30,10 @@ async def spec_runner_node(state: AssistantState) -> AssistantState:
     route = state.get("route", "general_chat")
     index = int(state.get("plan_index", 0))
     task = state.get("current_task", "")
-    from app.graph.nodes.general_chat import general_chat_node
-    from app.graph.nodes.nl2sql import nl2sql_node
-    from app.graph.nodes.rag import rag_node
-    from app.graph.nodes.web_search import web_search_node
+    from app.specialists.general_chat import general_chat_node
+    from app.specialists.nl2sql import nl2sql_node
+    from app.specialists.rag import rag_node
+    from app.specialists.web_search import web_search_node
 
     dispatch = {
         "general_chat": general_chat_node,
@@ -77,3 +78,8 @@ async def join_node(state: AssistantState) -> AssistantState:
         ],
         "plan_index": len(state.get("plan_steps", [])),
     }
+
+
+# Structural conformance check — both fan-out nodes must satisfy Specialist.
+_spec_runner_conforms: Specialist = spec_runner_node
+_join_conforms: Specialist = join_node

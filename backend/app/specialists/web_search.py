@@ -8,9 +8,10 @@ from app.core.logging import log
 from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
 from app.core.untrusted import wrap_untrusted
 from app.core.web_search import search
-from app.graph.nodes.common import step_context, task_for, with_instructions
 from app.graph.state import AssistantState
 from app.graph.streaming import emit_frame
+from app.specialists.base import Specialist
+from app.specialists.common import step_context, task_for, with_instructions
 
 register(
     AgentPrompt(
@@ -89,3 +90,7 @@ async def web_search_node(state: AssistantState) -> AssistantState:
             "step_error": True,
             "route": "web_search",
         }
+
+
+# Structural conformance check — web_search_node must satisfy the Specialist protocol.
+_: Specialist = web_search_node

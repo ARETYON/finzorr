@@ -6,9 +6,10 @@ from app.ai.base import AssistantMessage, ChatMessage, SystemMessage, UserMessag
 from app.ai.completion import stream
 from app.core.logging import log
 from app.core.prompt_registry import render_agent_prompt
-from app.graph.nodes.common import step_context, task_for, with_instructions
 from app.graph.state import AssistantState
 from app.graph.streaming import emit_frame
+from app.specialists.base import Specialist
+from app.specialists.common import step_context, task_for, with_instructions
 
 HISTORY_WINDOW = 12  # last N turns carried into the prompt
 
@@ -52,3 +53,7 @@ async def general_chat_node(state: AssistantState) -> AssistantState:
             "route": "general_chat",
             "step_error": True,
         }
+
+
+# Structural conformance check — general_chat_node must satisfy the Specialist protocol.
+_: Specialist = general_chat_node
