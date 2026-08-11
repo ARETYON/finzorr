@@ -131,7 +131,7 @@ class TestReadUrlSSRF:
 
 class TestDispatcherContract:
     async def test_per_tool_timeout_honored(self) -> None:
-        from app.ai.base import ToolDefinition
+        from app.infrastructure.llm.base import ToolDefinition
         from app.tools_registry.dispatcher import dispatch, register_tool
 
         async def slow(_args: dict[str, Any]) -> str:
@@ -147,7 +147,7 @@ class TestDispatcherContract:
         assert "timed out" in result
 
     async def test_never_raises(self) -> None:
-        from app.ai.base import ToolDefinition
+        from app.infrastructure.llm.base import ToolDefinition
         from app.tools_registry.dispatcher import dispatch, register_tool
 
         async def boom(_args: dict[str, Any]) -> str:
@@ -165,8 +165,8 @@ class TestDispatcherContract:
 
 class TestFallbackTokenSuppression:
     async def test_partial_stream_not_replayed(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from app.ai import completion
-        from app.ai.base import StreamDone, TextDelta, Usage
+        from app.infrastructure.llm import completion
+        from app.infrastructure.llm.base import StreamDone, TextDelta, Usage
 
         class FlakyPrimary:
             name = "primary"

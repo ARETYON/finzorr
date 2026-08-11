@@ -15,13 +15,13 @@ from langsmith import traceable
 from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from app.ai.base import SystemMessage, UserMessage
-from app.ai.completion import stream
 from app.core.logging import log
 from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
-from app.db.session import SessionLocal
 from app.graph.state import AssistantState
 from app.graph.streaming import emit_frame
+from app.infrastructure.db.session import SessionLocal
+from app.infrastructure.llm.base import SystemMessage, UserMessage
+from app.infrastructure.llm.completion import stream
 from app.models.price_alert import PriceAlert
 from app.models.scheduled_task import ScheduledTask
 from app.models.watchlist_item import WatchlistItem

@@ -143,7 +143,7 @@ class TestCompose:
 
 class TestArgumentValidation:
     def _definition(self) -> Any:
-        from app.ai.base import ToolDefinition
+        from app.infrastructure.llm.base import ToolDefinition
 
         return ToolDefinition(
             name="t",
@@ -215,12 +215,12 @@ class TestTurnLock:
     async def test_claim_release_cycle_local_fallback(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from app.core import turn_lock
+        from app.infrastructure import turn_lock
 
         def no_redis() -> Any:
             raise ConnectionError("redis down")
 
-        monkeypatch.setattr("app.core.redis.get_redis", no_redis)
+        monkeypatch.setattr("app.infrastructure.redis.get_redis", no_redis)
         turn_lock._local.clear()
         assert await turn_lock.claim("s1") is True
         assert await turn_lock.claim("s1") is False  # local set still guards

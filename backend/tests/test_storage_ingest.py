@@ -281,7 +281,7 @@ async def test_failed_ingest_cleans_up_attempted_batches(
 
     monkeypatch.setattr(ingest_mod, "embed_texts", flaky_embed)
     monkeypatch.setattr(ingest_mod, "upsert_chunks", fake_upsert)
-    monkeypatch.setattr("app.rag.vector_store.delete_document", record_delete)
+    monkeypatch.setattr("app.infrastructure.vector_store.delete_document", record_delete)
 
     user_id, doc_id = uuid_module.uuid4(), uuid_module.uuid4()
     # >16 chunks => at least 2 embed batches (1200-char chunks from 1 page)

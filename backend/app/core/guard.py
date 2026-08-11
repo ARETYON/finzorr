@@ -32,8 +32,8 @@ async def screen_message(text: str) -> str:
     if not settings.GUARD_LLM_ENABLED:
         return "ok"
     try:
-        from app.ai.base import SystemMessage, UserMessage
-        from app.ai.completion import complete
+        from app.infrastructure.llm.base import SystemMessage, UserMessage
+        from app.infrastructure.llm.completion import complete
 
         verdict = await complete(
             [

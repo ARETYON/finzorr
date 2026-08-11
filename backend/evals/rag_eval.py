@@ -63,8 +63,8 @@ GOLDEN: list[tuple[str, str, str, str]] = [
 
 async def run(min_hit_rate: float | None, judge: bool, min_score: float | None) -> int:
     from app.documents.ingest import ingest_document
+    from app.infrastructure.vector_store import delete_tenant, search
     from app.rag.embeddings import embed_query
-    from app.rag.vector_store import delete_tenant, search
 
     tenant_uuid = uuid.uuid4()  # ingest signature wants a UUID user id
     print(f"rag eval: tenant {tenant_uuid} ({len(GOLDEN)} golden items)")
@@ -87,8 +87,8 @@ async def run(min_hit_rate: float | None, judge: bool, min_score: float | None) 
             print(f"  {mark}  {question[:52]:<52} ({filename})")
 
             if judge and found:
-                from app.ai.base import SystemMessage, UserMessage
-                from app.ai.completion import complete
+                from app.infrastructure.llm.base import SystemMessage, UserMessage
+                from app.infrastructure.llm.completion import complete
 
                 context = "\n".join(h.text for h in results[:3])
                 answer = await complete(

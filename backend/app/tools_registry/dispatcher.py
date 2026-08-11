@@ -12,9 +12,9 @@ from typing import Any
 
 from langsmith import traceable
 
-from app.ai.base import ToolDefinition
 from app.core.logging import log
 from app.core.otel import span
+from app.infrastructure.llm.base import ToolDefinition
 
 ToolHandler = Callable[[dict[str, Any]], Awaitable[str]]
 

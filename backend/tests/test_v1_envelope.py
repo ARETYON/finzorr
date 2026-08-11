@@ -11,7 +11,7 @@ from datetime import timedelta
 import pytest
 from httpx import AsyncClient
 
-from app.db.session import SessionLocal
+from app.infrastructure.db.session import SessionLocal
 from app.models.message import Message
 from app.models.user import utcnow
 

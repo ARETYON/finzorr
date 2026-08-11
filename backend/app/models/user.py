@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from sqlalchemy import DateTime, String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.base import Base
+from app.infrastructure.db.base import Base
 
 
 def utcnow() -> datetime:

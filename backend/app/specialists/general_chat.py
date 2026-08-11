@@ -2,12 +2,12 @@
 
 from typing import Any
 
-from app.ai.base import AssistantMessage, ChatMessage, SystemMessage, UserMessage
-from app.ai.completion import stream
 from app.core.logging import log
 from app.core.prompt_registry import render_agent_prompt
 from app.graph.state import AssistantState
 from app.graph.streaming import emit_frame
+from app.infrastructure.llm.base import AssistantMessage, ChatMessage, SystemMessage, UserMessage
+from app.infrastructure.llm.completion import stream
 from app.specialists.base import Specialist
 from app.specialists.common import step_context, task_for, with_instructions
 

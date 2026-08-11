@@ -19,7 +19,7 @@ async def test_search_filter_carries_exactly_the_passed_tenants(
 ) -> None:
     from qdrant_client import models as qmodels
 
-    from app.rag import vector_store
+    from app.infrastructure import vector_store
 
     captured: dict[str, Any] = {}
 
@@ -62,7 +62,7 @@ async def test_rag_node_requests_only_glossary_and_own_tenant(
         return [0.0] * 3
 
     async def fake_stream(*_a: Any, **_k: Any) -> Any:
-        from app.ai.base import StreamDone, Usage
+        from app.infrastructure.llm.base import StreamDone, Usage
 
         return StreamDone(text="no docs found", tool_calls=[], usage=Usage())
 
@@ -97,7 +97,7 @@ async def test_debug_pseudo_user_gets_no_private_tenant(
         return [0.0] * 3
 
     async def fake_stream(*_a: Any, **_k: Any) -> Any:
-        from app.ai.base import StreamDone, Usage
+        from app.infrastructure.llm.base import StreamDone, Usage
 
         return StreamDone(text="x", tool_calls=[], usage=Usage())
 
@@ -113,7 +113,7 @@ async def test_debug_pseudo_user_gets_no_private_tenant(
 
 
 def _hit(score: float, tenant: str, doc_id: str = "", title: str = "doc.pdf") -> Any:
-    from app.rag.vector_store import Hit
+    from app.infrastructure.vector_store import Hit
 
     return Hit(
         score=score, text="excerpt text", title=title, locator="p.1",
@@ -135,7 +135,7 @@ async def test_glossary_only_hits_never_touch_db_or_storage(
             touched["db"] = True
             raise AssertionError("must not be constructed")
 
-    monkeypatch.setattr("app.db.session.SessionLocal", _Boom())
+    monkeypatch.setattr("app.infrastructure.db.session.SessionLocal", _Boom())
     blocks, expanded = await rag_mod._expand_best_small_doc(
         "user-1", [_hit(0.9, "glossary")]
     )
@@ -177,7 +177,7 @@ async def test_small_doc_expands_to_full_labeled_text(
         async def load(self, _k: str) -> bytes:
             return b"raw"
 
-    monkeypatch.setattr("app.db.session.SessionLocal", lambda: _Session())
+    monkeypatch.setattr("app.infrastructure.db.session.SessionLocal", lambda: _Session())
     monkeypatch.setattr("app.documents.storage.get_storage", lambda: _Storage())
     monkeypatch.setattr(
         "app.documents.ingest.extract_any",
@@ -227,7 +227,7 @@ async def test_large_doc_keeps_excerpt_behavior(
         async def execute(self, _q: Any) -> _Result:
             return _Result()
 
-    monkeypatch.setattr("app.db.session.SessionLocal", lambda: _Session())
+    monkeypatch.setattr("app.infrastructure.db.session.SessionLocal", lambda: _Session())
     hits = [_hit(0.9, user_id, str(uuid_module.uuid4()), "big.pdf")]
     # whole-doc-intent clears the G4 gate but chunk_count=40 still blocks it
     blocks, expanded = await rag_mod._expand_best_small_doc(
@@ -253,7 +253,7 @@ async def test_expansion_failure_falls_back_to_excerpts(
         async def __aexit__(self, *a: Any) -> None:
             return None
 
-    monkeypatch.setattr("app.db.session.SessionLocal", lambda: _ExplodingSession())
+    monkeypatch.setattr("app.infrastructure.db.session.SessionLocal", lambda: _ExplodingSession())
     hits = [_hit(0.9, user_id, str(uuid_module.uuid4()))]
     # whole-doc-intent clears the G4 gate so the DB call is actually reached
     # (and explodes) -> proves the try/except fallback, not just gate rejection
@@ -294,7 +294,7 @@ async def test_full_doc_char_cap_enforced(monkeypatch: pytest.MonkeyPatch) -> No
         async def load(self, _k: str) -> bytes:
             return b"raw"
 
-    monkeypatch.setattr("app.db.session.SessionLocal", lambda: _Session())
+    monkeypatch.setattr("app.infrastructure.db.session.SessionLocal", lambda: _Session())
     monkeypatch.setattr("app.documents.storage.get_storage", lambda: _Storage())
     monkeypatch.setattr(
         "app.documents.ingest.extract_any",
@@ -329,7 +329,7 @@ async def test_single_unrelated_hit_does_not_expand(monkeypatch: pytest.MonkeyPa
             touched["db"] = True
             raise AssertionError("must not reach the DB — gate should reject first")
 
-    monkeypatch.setattr("app.db.session.SessionLocal", _Boom())
+    monkeypatch.setattr("app.infrastructure.db.session.SessionLocal", _Boom())
     hits = [_hit(0.9, user_id, str(uuid_module.uuid4()), "unrelated-report.pdf")]
     blocks, expanded = await rag_mod._expand_best_small_doc(
         user_id, hits, "what was TCS trading at today?"
@@ -374,7 +374,7 @@ async def test_multiple_hits_from_same_doc_expand_without_intent_words(
         async def load(self, _k: str) -> bytes:
             return b"raw"
 
-    monkeypatch.setattr("app.db.session.SessionLocal", lambda: _Session())
+    monkeypatch.setattr("app.infrastructure.db.session.SessionLocal", lambda: _Session())
     monkeypatch.setattr("app.documents.storage.get_storage", lambda: _Storage())
     monkeypatch.setattr(
         "app.documents.ingest.extract_any", lambda _f, _d: [("p.1", "full text")]
@@ -424,7 +424,7 @@ async def test_rag_node_tags_invalid_citation_without_mangling_answer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from app.core import trace as trace_mod
-    from app.rag.vector_store import Hit
+    from app.infrastructure.vector_store import Hit
     from app.specialists import rag as rag_mod
 
     tagged: list[str] = []
@@ -440,7 +440,7 @@ async def test_rag_node_tags_invalid_citation_without_mangling_answer(
         return [0.0] * 3
 
     async def fake_stream(*_a: Any, **_k: Any) -> Any:
-        from app.ai.base import StreamDone, Usage
+        from app.infrastructure.llm.base import StreamDone, Usage
 
         # the model invented citation [5] though only 1 was retrieved
         return StreamDone(text="Revenue grew [5].", tool_calls=[], usage=Usage())
@@ -455,7 +455,7 @@ async def test_rag_node_tags_invalid_citation_without_mangling_answer(
 
 
 async def test_rag_node_tags_no_citations_despite_hits(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.rag.vector_store import Hit
+    from app.infrastructure.vector_store import Hit
     from app.specialists import rag as rag_mod
 
     tagged: list[str] = []
@@ -468,7 +468,7 @@ async def test_rag_node_tags_no_citations_despite_hits(monkeypatch: pytest.Monke
         return [0.0] * 3
 
     async def fake_stream(*_a: Any, **_k: Any) -> Any:
-        from app.ai.base import StreamDone, Usage
+        from app.infrastructure.llm.base import StreamDone, Usage
 
         return StreamDone(text="I think the answer is probably yes.", tool_calls=[], usage=Usage())
 
@@ -483,7 +483,7 @@ async def test_rag_node_tags_no_citations_despite_hits(monkeypatch: pytest.Monke
 async def test_rag_node_no_citation_tag_when_answer_cites_properly(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.rag.vector_store import Hit
+    from app.infrastructure.vector_store import Hit
     from app.specialists import rag as rag_mod
 
     tagged: list[str] = []
@@ -496,7 +496,7 @@ async def test_rag_node_no_citation_tag_when_answer_cites_properly(
         return [0.0] * 3
 
     async def fake_stream(*_a: Any, **_k: Any) -> Any:
-        from app.ai.base import StreamDone, Usage
+        from app.infrastructure.llm.base import StreamDone, Usage
 
         return StreamDone(text="It was 42 [1].", tool_calls=[], usage=Usage())
 
@@ -526,7 +526,7 @@ async def test_rag_node_no_false_positive_on_honest_refusal(
         return [0.0] * 3
 
     async def fake_stream(*_a: Any, **_k: Any) -> Any:
-        from app.ai.base import StreamDone, Usage
+        from app.infrastructure.llm.base import StreamDone, Usage
 
         return StreamDone(
             text="I couldn't find this in the documents.", tool_calls=[], usage=Usage()
@@ -548,7 +548,7 @@ async def test_rag_node_flags_document_embedded_injection_attempt(
     stays inside wrap_untrusted's fence in the prompt actually sent to the
     model, proving the two defenses compose (fencing neutralizes it,
     tagging makes the attempt visible)."""
-    from app.rag.vector_store import Hit
+    from app.infrastructure.vector_store import Hit
     from app.specialists import rag as rag_mod
 
     tagged: list[str] = []
@@ -565,7 +565,7 @@ async def test_rag_node_flags_document_embedded_injection_attempt(
     captured_prompt: dict[str, str] = {}
 
     async def fake_stream(messages: Any, **_k: Any) -> Any:
-        from app.ai.base import StreamDone, Usage
+        from app.infrastructure.llm.base import StreamDone, Usage
 
         captured_prompt["system"] = messages[0].content
         return StreamDone(text="I can't find that.", tool_calls=[], usage=Usage())
@@ -584,7 +584,7 @@ async def test_rag_node_flags_document_embedded_injection_attempt(
 async def test_rag_node_benign_document_never_tags_injection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.rag.vector_store import Hit
+    from app.infrastructure.vector_store import Hit
     from app.specialists import rag as rag_mod
 
     tagged: list[str] = []
@@ -598,7 +598,7 @@ async def test_rag_node_benign_document_never_tags_injection(
         return [0.0] * 3
 
     async def fake_stream(*_a: Any, **_k: Any) -> Any:
-        from app.ai.base import StreamDone, Usage
+        from app.infrastructure.llm.base import StreamDone, Usage
 
         return StreamDone(text="Revenue grew 12% [1].", tool_calls=[], usage=Usage())
 
@@ -656,7 +656,7 @@ async def test_search_mmr_false_skips_the_oversized_vector_fetch(
     """G5 Mod 1: the cost-profile invariant — mmr=False (facts.py's path,
     which runs on EVERY turn) must issue the ORIGINAL single-top_k call,
     never the top_k*2 + with_vectors=True fetch."""
-    from app.rag import vector_store
+    from app.infrastructure import vector_store
 
     captured: dict[str, Any] = {}
 
@@ -683,7 +683,7 @@ async def test_search_mmr_false_skips_the_oversized_vector_fetch(
 async def test_search_mmr_true_fetches_oversized_with_vectors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.rag import vector_store
+    from app.infrastructure import vector_store
 
     captured: dict[str, Any] = {}
 

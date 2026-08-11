@@ -10,10 +10,10 @@ from typing import Any
 
 from langsmith import traceable
 
-from app.ai.base import SystemMessage, UserMessage
-from app.ai.completion import complete
 from app.core.logging import log
 from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
+from app.infrastructure.llm.base import SystemMessage, UserMessage
+from app.infrastructure.llm.completion import complete
 from app.nl2sql.executor import (
     ExecutionResult,
     extract_sql,

@@ -20,8 +20,8 @@ from app.core.config import settings
 from app.core.logging import log
 from app.core.trace import mark
 from app.domain.chunking import CHUNK_CHARS, CHUNK_OVERLAP, chunk_pages
+from app.infrastructure.vector_store import upsert_chunks
 from app.rag.embeddings import embed_texts
-from app.rag.vector_store import upsert_chunks
 
 _EMBED_BATCH = 16
 _CSV_MAX_ROWS = 2000
@@ -268,7 +268,7 @@ async def ingest_document(
             vectors = await embed_texts([c["text"] for c in batch])
             total += await upsert_chunks(str(user_id), f"{doc_id}:{start}", batch, vectors)
     except Exception:
-        from app.rag.vector_store import delete_document as qdrant_delete
+        from app.infrastructure.vector_store import delete_document as qdrant_delete
 
         for batch_key in attempted_batches:
             try:

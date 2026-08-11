@@ -13,11 +13,11 @@ from typing import Any
 
 from sqlalchemy import select
 
-from app.ai.base import ToolDefinition
 from app.core.logging import log
 from app.core.request_context import get_current_user_id
-from app.db.session import SessionLocal
 from app.documents.storage import get_storage
+from app.infrastructure.db.session import SessionLocal
+from app.infrastructure.llm.base import ToolDefinition
 from app.models.document import Document
 from app.tools_registry.dispatcher import register_tool
 

@@ -6,8 +6,8 @@ order (groq -> gemini -> openrouter -> ollama) drives budget-exhaustion and
 failure fallback in `completion.py`.
 """
 
-from app.ai.openai_compatible import OpenAICompatibleProvider
 from app.core.config import settings
+from app.infrastructure.llm.openai_compatible import OpenAICompatibleProvider
 
 FREE_CHAIN_ORDER = ["groq", "gemini", "openrouter", "ollama"]
 

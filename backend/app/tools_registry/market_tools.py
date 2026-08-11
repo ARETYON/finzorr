@@ -8,7 +8,7 @@ import json
 from dataclasses import asdict
 from typing import Any
 
-from app.ai.base import ToolDefinition
+from app.infrastructure.llm.base import ToolDefinition
 from app.market_data.cache import (
     HISTORY_TTL_S,
     OVERVIEW_TTL_S,

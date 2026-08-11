@@ -11,7 +11,7 @@ from app.core.logging import log
 async def check_rate_limit(user_id: str) -> bool:
     """True if the user may send another message in the current window."""
     try:
-        from app.core.redis import get_redis
+        from app.infrastructure.redis import get_redis
 
         redis = get_redis()
         key = f"ratelimit:{user_id}"

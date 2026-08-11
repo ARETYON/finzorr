@@ -9,7 +9,7 @@ from datetime import datetime
 from sqlalchemy import BigInteger, DateTime, Float, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.base import Base
+from app.infrastructure.db.base import Base
 from app.models.user import utcnow
 
 

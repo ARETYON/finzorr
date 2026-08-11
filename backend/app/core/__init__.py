@@ -1,1 +1,1 @@
-"""Cross-cutting core utilities: config, logging, rate limiting, prompts."""
+"""Cross-cutting core utilities: config, logging, guard, prompts."""

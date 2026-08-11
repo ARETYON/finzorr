@@ -22,7 +22,7 @@ async def claim(session_id: str) -> bool:
     if session_id in _local:
         return False
     try:
-        from app.core.redis import get_redis
+        from app.infrastructure.redis import get_redis
 
         acquired = await get_redis().set(
             f"turn_lock:{session_id}", "1", nx=True, ex=_ttl_s()
@@ -39,7 +39,7 @@ async def release(session_id: str) -> None:
     """Release the claim (idempotent; best-effort on the Redis side)."""
     _local.discard(session_id)
     try:
-        from app.core.redis import get_redis
+        from app.infrastructure.redis import get_redis
 
         await get_redis().delete(f"turn_lock:{session_id}")
     except Exception:  # noqa: BLE001 — the TTL is the backstop

@@ -44,7 +44,7 @@ class FakeRedis:
 
 def _fake_redis(monkeypatch: pytest.MonkeyPatch) -> FakeRedis:
     fake = FakeRedis()
-    monkeypatch.setattr("app.core.redis.get_redis", lambda: fake)
+    monkeypatch.setattr("app.infrastructure.redis.get_redis", lambda: fake)
     return fake
 
 
@@ -132,7 +132,7 @@ async def test_already_fails_closed_when_redis_down(monkeypatch: pytest.MonkeyPa
     def _boom() -> FakeRedis:
         raise RuntimeError("redis down")
 
-    monkeypatch.setattr("app.core.redis.get_redis", _boom)
+    monkeypatch.setattr("app.infrastructure.redis.get_redis", _boom)
     assert await _already("k3") is True  # skip work rather than duplicate
 
 
@@ -148,7 +148,7 @@ async def test_release_swallows_redis_errors(monkeypatch: pytest.MonkeyPatch) ->
     def _boom() -> FakeRedis:
         raise RuntimeError("redis down")
 
-    monkeypatch.setattr("app.core.redis.get_redis", _boom)
+    monkeypatch.setattr("app.infrastructure.redis.get_redis", _boom)
     await _release("k5")  # must not raise
 
 

@@ -9,8 +9,6 @@ import asyncio
 import re
 from typing import Any
 
-from app.ai.base import SystemMessage, UserMessage
-from app.ai.completion import stream
 from app.core.logging import log
 from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
 from app.core.trace import tag
@@ -19,8 +17,10 @@ from app.domain.citations import find_invalid_markers
 from app.domain.guard import screen_floor, screen_output
 from app.graph.state import AssistantState
 from app.graph.streaming import emit_frame
+from app.infrastructure.llm.base import SystemMessage, UserMessage
+from app.infrastructure.llm.completion import stream
+from app.infrastructure.vector_store import GLOSSARY_TENANT, Hit, search
 from app.rag.embeddings import embed_query
-from app.rag.vector_store import GLOSSARY_TENANT, Hit, search
 from app.specialists.base import Specialist
 from app.specialists.common import step_context, task_for, with_instructions
 
@@ -120,7 +120,7 @@ async def _expand_best_small_doc(
 
         from sqlalchemy import select
 
-        from app.db.session import SessionLocal
+        from app.infrastructure.db.session import SessionLocal
         from app.models.document import Document
 
         async with SessionLocal() as db:

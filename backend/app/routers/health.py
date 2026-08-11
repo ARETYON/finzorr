@@ -21,8 +21,8 @@ async def healthz() -> HealthOut:
 @router.get("/readyz", response_model=ReadyOut)
 async def readyz() -> ReadyOut:
     """Readiness: verify DB and Redis connections; degrade per-dependency."""
-    from app.core.redis import get_redis
-    from app.db.session import engine
+    from app.infrastructure.db.session import engine
+    from app.infrastructure.redis import get_redis
 
     try:
         async with engine.connect() as conn:

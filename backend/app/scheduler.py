@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.logging import log
-from app.db.session import SessionLocal
+from app.infrastructure.db.session import SessionLocal
 from app.models.chat_session import ChatSession
 from app.models.message import Message
 from app.models.price_alert import PriceAlert
@@ -51,7 +51,7 @@ def _parse_hhmm(raw: str) -> time | None:
 async def _already(key: str, ttl_s: int = DEDUPE_TTL_S) -> bool:
     """True if `key` fired already (sets it atomically otherwise)."""
     try:
-        from app.core.redis import get_redis
+        from app.infrastructure.redis import get_redis
 
         return not await get_redis().set(key, "1", nx=True, ex=ttl_s)
     except Exception as exc:  # noqa: BLE001 — fail closed (skip) to avoid duplicates
@@ -65,7 +65,7 @@ async def _release(key: str) -> None:
     key is claimed BEFORE the work, and without release one transient error
     would silently skip that briefing/task for the whole day."""
     try:
-        from app.core.redis import get_redis
+        from app.infrastructure.redis import get_redis
 
         await get_redis().delete(key)
     except Exception:  # noqa: BLE001 — next-day TTL expiry is the backstop

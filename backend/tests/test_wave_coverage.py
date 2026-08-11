@@ -9,8 +9,8 @@ from typing import Any
 import pytest
 from httpx import AsyncClient
 
-from app.db.session import SessionLocal
 from app.graph.state import AssistantState
+from app.infrastructure.db.session import SessionLocal
 from app.models.message import Message
 from app.specialists.memory import _apply_actions, _get_alerts, _get_watchlist, parse_reply
 from app.specialists.replan import replan_node
@@ -38,7 +38,7 @@ def _failed_plan_state() -> AssistantState:
 
 
 async def test_replan_revises_remaining_steps(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.ai.completion as completion_mod
+    import app.infrastructure.llm.completion as completion_mod
 
     async def scripted(*_a: Any, **_k: Any) -> str:
         return '{"plan": [{"route": "general_chat", "task": "answer directly"}], "reason": "r"}'
@@ -63,7 +63,7 @@ async def test_replan_revises_remaining_steps(monkeypatch: pytest.MonkeyPatch) -
 
 
 async def test_replan_empty_revision_early_exits(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.ai.completion as completion_mod
+    import app.infrastructure.llm.completion as completion_mod
 
     async def scripted(*_a: Any, **_k: Any) -> str:
         return '{"plan": [], "reason": "nothing sensible remains"}'
@@ -76,7 +76,7 @@ async def test_replan_empty_revision_early_exits(monkeypatch: pytest.MonkeyPatch
 
 
 async def test_replan_llm_failure_early_exits(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.ai.completion as completion_mod
+    import app.infrastructure.llm.completion as completion_mod
 
     async def broken(*_a: Any, **_k: Any) -> str:
         raise RuntimeError("provider down")

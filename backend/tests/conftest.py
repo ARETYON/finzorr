@@ -39,8 +39,8 @@ from sqlalchemy.ext.asyncio import create_async_engine  # noqa: E402
 
 import app.models  # noqa: F401, E402 — registers every table on Base.metadata
 from app.auth.jwt_session import SESSION_COOKIE, create_session_jwt  # noqa: E402
-from app.db.base import Base  # noqa: E402
-from app.db.session import engine  # noqa: E402
+from app.infrastructure.db.base import Base  # noqa: E402
+from app.infrastructure.db.session import engine  # noqa: E402
 from app.main import app as fastapi_app  # noqa: E402
 from app.models.user import User  # noqa: E402
 
@@ -110,7 +110,7 @@ async def user_client(client: AsyncClient) -> AsyncClient:
 @pytest.fixture
 async def other_client(_database: None) -> AsyncIterator[AsyncClient]:
     """A SECOND authenticated user — the attacker in ownership tests."""
-    from app.db.session import SessionLocal
+    from app.infrastructure.db.session import SessionLocal
 
     async with SessionLocal() as db:
         user = User(

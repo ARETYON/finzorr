@@ -21,9 +21,9 @@ from app.core.logging import log, new_correlation_id
 from app.core.otel import span
 from app.core.tasks import spawn
 from app.core.untrusted import wrap_untrusted
-from app.db.session import SessionLocal
 from app.graph.graph import get_graph
 from app.graph.state import AssistantState
+from app.infrastructure.db.session import SessionLocal
 from app.models.message import Message
 from app.models.user import User
 
@@ -82,8 +82,8 @@ async def _vision_turn(
     """Answer a question about an uploaded image, persisting the turn.
     Traceable: this path never enters the graph, so without the decorator an
     image turn produced NO trace at all."""
-    from app.ai.vision import describe_image, vision_available
     from app.documents.storage import get_storage
+    from app.infrastructure.llm.vision import describe_image, vision_available
     from app.specialists.persist import persist_node
 
     if not vision_available():

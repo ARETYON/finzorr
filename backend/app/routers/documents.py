@@ -10,17 +10,17 @@ from app.auth.dependencies import get_current_user
 from app.core.config import settings
 from app.core.logging import log
 from app.core.pagination import BARE_LIST_DESCRIPTION, Page, page_params
-from app.core.rate_limit import check_rate_limit
-from app.db.session import get_db
 from app.documents.ingest import (
     DocumentTooLargeError,
     UnsupportedDocumentError,
     ingest_document,
 )
 from app.documents.storage import get_storage
+from app.infrastructure.db.session import get_db
+from app.infrastructure.rate_limit import check_rate_limit
+from app.infrastructure.vector_store import delete_document as qdrant_delete_document
 from app.models.document import Document
 from app.models.user import User
-from app.rag.vector_store import delete_document as qdrant_delete_document
 from app.schemas.documents import DocumentOut, DocumentUploadOut
 
 router = APIRouter(prefix="/documents", tags=["documents"])

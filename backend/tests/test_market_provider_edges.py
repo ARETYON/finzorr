@@ -243,7 +243,7 @@ def test_serialize_dataclass_and_lists() -> None:
 
 async def test_cached_json_fetches_once_then_hits(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = _FakeCacheRedis()
-    monkeypatch.setattr("app.core.redis.get_redis", lambda: fake)
+    monkeypatch.setattr("app.infrastructure.redis.get_redis", lambda: fake)
     calls = 0
 
     async def fetch() -> _Sample:
@@ -264,7 +264,7 @@ async def test_cached_json_fails_open_without_redis(
     def _boom() -> _FakeCacheRedis:
         raise RuntimeError("redis down")
 
-    monkeypatch.setattr("app.core.redis.get_redis", _boom)
+    monkeypatch.setattr("app.infrastructure.redis.get_redis", _boom)
     calls = 0
 
     async def fetch() -> dict[str, int]:
@@ -280,7 +280,7 @@ async def test_cached_json_swallows_write_failures(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fake = _FakeCacheRedis(fail_writes=True)
-    monkeypatch.setattr("app.core.redis.get_redis", lambda: fake)
+    monkeypatch.setattr("app.infrastructure.redis.get_redis", lambda: fake)
 
     async def fetch() -> str:
         return "value"

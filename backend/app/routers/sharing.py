@@ -10,8 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import get_current_user
 from app.core.config import settings
 from app.core.pagination import BARE_LIST_DESCRIPTION, Page, page_params
-from app.db.session import get_db
 from app.domain.guard import screen_floor
+from app.infrastructure.db.session import get_db
 from app.models.chat_session import ChatSession
 from app.models.message import Message
 from app.models.persona import Persona

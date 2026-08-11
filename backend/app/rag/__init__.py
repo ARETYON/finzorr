@@ -1,1 +1,1 @@
-"""RAG: embeddings, Qdrant vector store, retrieval, and the glossary corpus."""
+"""RAG: embeddings, retrieval, and the glossary corpus."""

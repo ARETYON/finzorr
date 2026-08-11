@@ -15,12 +15,12 @@ from urllib.parse import urlencode
 import httpx
 from cryptography.fernet import Fernet
 
-from app.ai.base import ToolDefinition
 from app.core.config import settings
 from app.core.logging import log
 from app.core.request_context import get_current_user_id
 from app.core.untrusted import wrap_untrusted
-from app.db.session import SessionLocal
+from app.infrastructure.db.session import SessionLocal
+from app.infrastructure.llm.base import ToolDefinition
 from app.models.oauth_token import OAuthToken
 from app.tools_registry.dispatcher import register_tool
 

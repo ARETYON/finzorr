@@ -27,9 +27,9 @@ from typing import Any
 
 import httpx
 
-from app.ai.base import ToolDefinition
 from app.core.config import settings
 from app.core.logging import log
+from app.infrastructure.llm.base import ToolDefinition
 from app.tools_registry.dispatcher import register_tool
 
 _TIMEOUT_S = 15.0

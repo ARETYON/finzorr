@@ -14,7 +14,12 @@ from typing import Any
 
 from langgraph.types import interrupt
 
-from app.ai.base import (
+from app.core.logging import log
+from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
+from app.core.request_context import user_context
+from app.graph.state import AssistantState
+from app.graph.streaming import emit_frame
+from app.infrastructure.llm.base import (
     AssistantMessage,
     ChatMessage,
     SystemMessage,
@@ -22,12 +27,7 @@ from app.ai.base import (
     ToolResultMessage,
     UserMessage,
 )
-from app.ai.completion import stream
-from app.core.logging import log
-from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
-from app.core.request_context import user_context
-from app.graph.state import AssistantState
-from app.graph.streaming import emit_frame
+from app.infrastructure.llm.completion import stream
 from app.specialists.base import Specialist
 from app.specialists.common import step_context, task_for, with_instructions
 from app.specialists.general_chat import build_history

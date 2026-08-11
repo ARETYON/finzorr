@@ -21,11 +21,11 @@ pytestmark = pytest.mark.integration
 async def test_failed_step_replans_through_compiled_graph(
     user_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from app.ai.base import StreamDone, Usage
     from app.graph import supervisor as supervisor_mod
     from app.graph import turn as turn_mod
     from app.graph.graph import close_graph
     from app.graph.turn import run_turn
+    from app.infrastructure.llm.base import StreamDone, Usage
     from app.specialists import compose as compose_mod
     from app.specialists import general_chat as gc_mod
     from app.specialists import replan as replan_mod
@@ -54,7 +54,7 @@ async def test_failed_step_replans_through_compiled_graph(
         )
 
     monkeypatch.setattr(replan_mod, "complete", fake_revision, raising=False)
-    import app.ai.completion as completion_mod
+    import app.infrastructure.llm.completion as completion_mod
 
     monkeypatch.setattr(completion_mod, "complete", fake_revision)
 

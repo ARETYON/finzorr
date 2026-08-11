@@ -4,9 +4,9 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, status
 
-from app.ai.base import SystemMessage, ToolDefinition, UserMessage
-from app.ai.completion import stream
-from app.ai.registry import available_providers
+from app.infrastructure.llm.base import SystemMessage, ToolDefinition, UserMessage
+from app.infrastructure.llm.completion import stream
+from app.infrastructure.llm.registry import available_providers
 
 router = APIRouter(prefix="/debug", tags=["debug"])
 

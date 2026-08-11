@@ -164,9 +164,9 @@ JUDGE_PROMPTS = [
 
 
 async def run_live(min_score: float | None = None) -> int:
-    from app.ai.base import SystemMessage, UserMessage
-    from app.ai.completion import complete
     from app.graph.supervisor import plan_and_route
+    from app.infrastructure.llm.base import SystemMessage, UserMessage
+    from app.infrastructure.llm.completion import complete
 
     scores: list[int] = []
     for prompt, expectation in JUDGE_PROMPTS:

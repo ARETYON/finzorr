@@ -25,11 +25,11 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.auth.dependencies import get_ws_user
 from app.core.config import settings
 from app.core.logging import log
-from app.core.rate_limit import check_rate_limit
-from app.core.turn_lock import claim as claim_turn
-from app.core.turn_lock import release as release_turn
-from app.db.session import SessionLocal
 from app.graph.turn import record_out_of_band_turn, resume_turn, run_turn
+from app.infrastructure.db.session import SessionLocal
+from app.infrastructure.rate_limit import check_rate_limit
+from app.infrastructure.turn_lock import claim as claim_turn
+from app.infrastructure.turn_lock import release as release_turn
 from app.models.chat_session import ChatSession
 from app.models.user import User
 

@@ -15,12 +15,12 @@ from typing import Any
 from langsmith import traceable
 from qdrant_client import models as qmodels
 
-from app.ai.base import SystemMessage, UserMessage
-from app.ai.completion import complete
 from app.core.logging import log
 from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
+from app.infrastructure.llm.base import SystemMessage, UserMessage
+from app.infrastructure.llm.completion import complete
+from app.infrastructure.vector_store import COLLECTION, ensure_collection, get_client, search
 from app.rag.embeddings import embed_query, embed_texts
-from app.rag.vector_store import COLLECTION, ensure_collection, get_client, search
 
 MAX_FACTS_PER_TURN = 3
 MAX_FACT_CHARS = 200  # a "fact" longer than this is a smuggled instruction, not a fact

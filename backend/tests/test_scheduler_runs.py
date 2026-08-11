@@ -13,7 +13,7 @@ from sqlalchemy import select
 
 from app.core.config import settings
 from app.core.web_search import SearchResult
-from app.db.session import SessionLocal
+from app.infrastructure.db.session import SessionLocal
 from app.market_data.base import QuoteData
 from app.models.chat_session import ChatSession
 from app.models.message import Message
@@ -75,7 +75,7 @@ class FakeQuoteProvider:
 
 def _fake_redis(monkeypatch: pytest.MonkeyPatch) -> FakeRedis:
     fake = FakeRedis()
-    monkeypatch.setattr("app.core.redis.get_redis", lambda: fake)
+    monkeypatch.setattr("app.infrastructure.redis.get_redis", lambda: fake)
     return fake
 
 
@@ -242,7 +242,7 @@ async def test_alerts_noop_when_market_closed(
     def _no_redis() -> FakeRedis:
         raise AssertionError("closed market must return before touching Redis")
 
-    monkeypatch.setattr("app.core.redis.get_redis", _no_redis)
+    monkeypatch.setattr("app.infrastructure.redis.get_redis", _no_redis)
     await _run_alerts(SATURDAY)
 
 

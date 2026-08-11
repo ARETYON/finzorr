@@ -45,7 +45,7 @@ async def test_llm_tier_off_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
         called["llm"] = True
         return "OK"
 
-    monkeypatch.setattr("app.ai.completion.complete", spy)
+    monkeypatch.setattr("app.infrastructure.llm.completion.complete", spy)
     assert await screen_message("hello there") == "ok"
     assert called["llm"] is False  # GUARD_LLM_ENABLED defaults false
 
@@ -58,7 +58,7 @@ async def test_llm_tier_failure_means_ok(monkeypatch: pytest.MonkeyPatch) -> Non
     async def boom(*_a: Any, **_k: Any) -> str:
         raise RuntimeError("model down")
 
-    monkeypatch.setattr("app.ai.completion.complete", boom)
+    monkeypatch.setattr("app.infrastructure.llm.completion.complete", boom)
     assert await screen_message("a benign question") == "ok"  # never blocks
 
 

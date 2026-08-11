@@ -13,8 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.core.logging import configure_logging, log
+from app.infrastructure.vector_store import GLOSSARY_TENANT, upsert_chunks
 from app.rag.embeddings import embed_texts
-from app.rag.vector_store import GLOSSARY_TENANT, upsert_chunks
 
 _CORPUS = Path(__file__).parent / "seed_corpus" / "glossary.md"
 _ENTRY = re.compile(r"^## (?P<term>.+?) \| (?P<category>\w+)\s*$")

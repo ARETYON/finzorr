@@ -11,12 +11,12 @@ Sequential plans only — a parallel fan-out is never replanned.
 import json
 from typing import Any
 
-from app.ai.base import SystemMessage, UserMessage
 from app.core.logging import log
 from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
 from app.graph.state import AssistantState
 from app.graph.streaming import emit_frame
 from app.graph.supervisor import validate_plan
+from app.infrastructure.llm.base import SystemMessage, UserMessage
 from app.specialists.base import Specialist
 
 register(
@@ -42,7 +42,7 @@ _REPLAN_TIMEOUT_S = 30.0
 
 async def replan_node(state: AssistantState) -> AssistantState:
     """Revise the remaining steps once; empty revision = honest early exit."""
-    from app.ai.completion import complete
+    from app.infrastructure.llm.completion import complete
 
     steps = state.get("plan_steps", [])
     index = state.get("plan_index", 0)  # advance already moved past the failed step

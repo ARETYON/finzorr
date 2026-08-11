@@ -7,8 +7,9 @@ from typing import Any
 
 import pytest
 
-import app.ai.completion as completion
-from app.ai.base import (
+import app.infrastructure.llm.completion as completion
+from app.core.config import settings
+from app.infrastructure.llm.base import (
     ChatMessage,
     StreamDone,
     StreamEvent,
@@ -17,7 +18,6 @@ from app.ai.base import (
     Usage,
     UserMessage,
 )
-from app.core.config import settings
 
 pytestmark = pytest.mark.sanity
 
@@ -90,7 +90,7 @@ def _wire(
     redis: FakeRedis | None = None,
 ) -> FakeRedis:
     fake_redis = redis or FakeRedis()
-    monkeypatch.setattr("app.core.redis.get_redis", lambda: fake_redis)
+    monkeypatch.setattr("app.infrastructure.redis.get_redis", lambda: fake_redis)
     monkeypatch.setattr(completion, "get_provider", lambda name=None: providers[name])
     monkeypatch.setattr(completion, "default_model", lambda name: "fake-model")
     return fake_redis
@@ -114,21 +114,21 @@ async def test_budget_disabled_when_zero(monkeypatch: pytest.MonkeyPatch) -> Non
     def _boom() -> FakeRedis:
         raise AssertionError("budget=0 must short-circuit before Redis")
 
-    monkeypatch.setattr("app.core.redis.get_redis", _boom)
+    monkeypatch.setattr("app.infrastructure.redis.get_redis", _boom)
     assert await completion._budget_exceeded("groq") is False
 
 
 async def test_budget_exceeded_at_threshold(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "DAILY_TOKEN_BUDGET", 100)
     fake = FakeRedis({_today_key("groq"): "100"})
-    monkeypatch.setattr("app.core.redis.get_redis", lambda: fake)
+    monkeypatch.setattr("app.infrastructure.redis.get_redis", lambda: fake)
     assert await completion._budget_exceeded("groq") is True
 
 
 async def test_budget_not_exceeded_below_threshold(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "DAILY_TOKEN_BUDGET", 100)
     fake = FakeRedis({_today_key("groq"): "99"})
-    monkeypatch.setattr("app.core.redis.get_redis", lambda: fake)
+    monkeypatch.setattr("app.infrastructure.redis.get_redis", lambda: fake)
     assert await completion._budget_exceeded("groq") is False
     assert await completion._budget_exceeded("gemini") is False  # no spend recorded
 
@@ -139,7 +139,7 @@ async def test_budget_fails_open_when_redis_down(monkeypatch: pytest.MonkeyPatch
     def _boom() -> FakeRedis:
         raise RuntimeError("redis down")
 
-    monkeypatch.setattr("app.core.redis.get_redis", _boom)
+    monkeypatch.setattr("app.infrastructure.redis.get_redis", _boom)
     assert await completion._budget_exceeded("groq") is False
 
 
@@ -150,13 +150,13 @@ async def test_record_usage_skips_zero_tokens(monkeypatch: pytest.MonkeyPatch) -
     def _boom() -> FakeRedis:
         raise AssertionError("zero usage must not touch Redis")
 
-    monkeypatch.setattr("app.core.redis.get_redis", _boom)
+    monkeypatch.setattr("app.infrastructure.redis.get_redis", _boom)
     await completion._record_usage("groq", Usage())
 
 
 async def test_record_usage_increments_with_48h_ttl(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = FakeRedis()
-    monkeypatch.setattr("app.core.redis.get_redis", lambda: fake)
+    monkeypatch.setattr("app.infrastructure.redis.get_redis", lambda: fake)
     await completion._record_usage("groq", Usage(prompt_tokens=30, completion_tokens=12))
     await completion._record_usage("groq", Usage(prompt_tokens=8, completion_tokens=0))
     key = _today_key("groq")
@@ -168,7 +168,7 @@ async def test_record_usage_swallows_redis_errors(monkeypatch: pytest.MonkeyPatc
     def _boom() -> FakeRedis:
         raise RuntimeError("redis down")
 
-    monkeypatch.setattr("app.core.redis.get_redis", _boom)
+    monkeypatch.setattr("app.infrastructure.redis.get_redis", _boom)
     await completion._record_usage("groq", Usage(prompt_tokens=1, completion_tokens=1))
 
 

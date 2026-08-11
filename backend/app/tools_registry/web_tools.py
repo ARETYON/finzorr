@@ -13,8 +13,8 @@ from urllib.parse import urlparse
 import httpx
 from bs4 import BeautifulSoup
 
-from app.ai.base import ToolDefinition
 from app.core.untrusted import wrap_untrusted
+from app.infrastructure.llm.base import ToolDefinition
 from app.tools_registry.dispatcher import register_tool
 
 _TIMEOUT_S = 15.0

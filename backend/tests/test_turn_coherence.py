@@ -12,9 +12,9 @@ pytestmark = pytest.mark.integration
 
 
 async def test_out_of_band_turn_updates_both_stores(user_client: AsyncClient) -> None:
-    from app.db.session import SessionLocal
     from app.graph.graph import close_graph, get_graph
     from app.graph.turn import record_out_of_band_turn
+    from app.infrastructure.db.session import SessionLocal
     from app.models.message import Message
 
     created = await user_client.post("/api/chat/sessions", json={})

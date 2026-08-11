@@ -20,8 +20,8 @@ pytestmark = pytest.mark.integration
 @pytest.fixture
 async def _fake_llm_and_tool(monkeypatch: pytest.MonkeyPatch) -> Any:
     """A sensitive test tool + a scripted 'LLM' that calls it once."""
-    from app.ai.base import StreamDone, ToolCallRequest, ToolDefinition, Usage
     from app.core.config import settings
+    from app.infrastructure.llm.base import StreamDone, ToolCallRequest, ToolDefinition, Usage
     from app.specialists import tools as tools_mod
     from app.tools_registry.dispatcher import register_tool
 

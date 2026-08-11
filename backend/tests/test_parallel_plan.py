@@ -17,11 +17,11 @@ pytestmark = pytest.mark.integration
 async def test_parallel_fanout_composes(
     user_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from app.ai.base import StreamDone, Usage
     from app.graph import supervisor as supervisor_mod
     from app.graph import turn as turn_mod
     from app.graph.graph import close_graph
     from app.graph.turn import run_turn
+    from app.infrastructure.llm.base import StreamDone, Usage
     from app.specialists import compose as compose_mod
     from app.specialists import general_chat as gc_mod
 

@@ -9,8 +9,8 @@ import pytest
 from cryptography.fernet import InvalidToken
 
 import app.mcp_client.github_client as github_client
-from app.ai.vision import _client_and_model, vision_available
 from app.core.config import settings
+from app.infrastructure.llm.vision import _client_and_model, vision_available
 from app.integrations.google_connect import (
     SCOPES,
     _fernet,

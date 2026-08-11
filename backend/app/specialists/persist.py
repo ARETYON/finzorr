@@ -12,13 +12,13 @@ from langsmith import traceable
 from sqlalchemy import func, select
 from sqlalchemy.exc import InterfaceError, OperationalError
 
-from app.ai.base import UserMessage as AiUserMessage
-from app.ai.completion import complete
 from app.core.logging import log
 from app.core.prompt_registry import render_agent_prompt
 from app.core.tasks import spawn
-from app.db.session import SessionLocal
 from app.graph.state import AssistantState
+from app.infrastructure.db.session import SessionLocal
+from app.infrastructure.llm.base import UserMessage as AiUserMessage
+from app.infrastructure.llm.completion import complete
 from app.models.chat_session import ChatSession
 from app.models.message import Message
 from app.models.user import utcnow
@@ -67,7 +67,7 @@ async def _already_persisted(turn_id: str) -> bool:
     if not turn_id:
         return False
     try:
-        from app.core.redis import get_redis
+        from app.infrastructure.redis import get_redis
 
         return bool(await get_redis().get(f"persisted:{turn_id}"))
     except Exception:  # noqa: BLE001 — idempotency is best-effort
@@ -78,7 +78,7 @@ async def _mark_persisted(turn_id: str) -> None:
     if not turn_id:
         return
     try:
-        from app.core.redis import get_redis
+        from app.infrastructure.redis import get_redis
 
         await get_redis().set(f"persisted:{turn_id}", "1", ex=3600)
     except Exception:  # noqa: BLE001

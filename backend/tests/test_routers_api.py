@@ -112,7 +112,7 @@ async def test_expired_share_link_is_dead(
 ) -> None:
     from datetime import timedelta
 
-    from app.db.session import SessionLocal
+    from app.infrastructure.db.session import SessionLocal
     from app.models.share_token import ShareToken
     from app.models.user import utcnow
 

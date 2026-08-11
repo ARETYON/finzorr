@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.jwt_session import SESSION_COOKIE, verify_session_jwt
-from app.db.session import SessionLocal, get_db
+from app.infrastructure.db.session import SessionLocal, get_db
 from app.models.user import User
 
 

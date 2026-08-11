@@ -6,8 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import Response
 
 from app.auth.dependencies import get_current_user
-from app.core.rate_limit import check_rate_limit
 from app.documents.storage import get_storage
+from app.infrastructure.rate_limit import check_rate_limit
 from app.models.user import User
 from app.schemas.misc import AttachmentUploadOut
 

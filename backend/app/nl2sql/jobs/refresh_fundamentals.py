@@ -14,7 +14,7 @@ import sys
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.core.logging import configure_logging, log
-from app.db.session import SessionLocal
+from app.infrastructure.db.session import SessionLocal
 from app.market_data.symbols import universe
 from app.market_data.yfinance_provider import provider
 from app.models.fundamental import Fundamental

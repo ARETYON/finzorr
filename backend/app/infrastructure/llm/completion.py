@@ -15,12 +15,12 @@ from typing import Any
 
 from langsmith import get_current_run_tree, traceable
 
-from app.ai.base import ChatMessage, StreamDone, TextDelta, ToolDefinition, Usage
-from app.ai.registry import default_model, get_provider
 from app.core.config import settings
 from app.core.logging import log
 from app.core.otel import span
 from app.domain.pii import redact_for_trace
+from app.infrastructure.llm.base import ChatMessage, StreamDone, TextDelta, ToolDefinition, Usage
+from app.infrastructure.llm.registry import default_model, get_provider
 
 OnToken = Callable[[str], Awaitable[None]]
 
@@ -34,7 +34,7 @@ async def _budget_exceeded(provider: str) -> bool:
     if settings.DAILY_TOKEN_BUDGET <= 0:
         return False
     try:
-        from app.core.redis import get_redis
+        from app.infrastructure.redis import get_redis
 
         used = await get_redis().get(_budget_key(provider))
         return int(used or 0) >= settings.DAILY_TOKEN_BUDGET
@@ -47,7 +47,7 @@ async def _record_usage(provider: str, usage: Usage) -> None:
     if usage.total_tokens <= 0:
         return
     try:
-        from app.core.redis import get_redis
+        from app.infrastructure.redis import get_redis
 
         redis = get_redis()
         key = _budget_key(provider)

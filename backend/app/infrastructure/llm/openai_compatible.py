@@ -12,7 +12,7 @@ from typing import Any
 import httpx
 from openai import AsyncOpenAI
 
-from app.ai.base import (
+from app.infrastructure.llm.base import (
     AssistantMessage,
     ChatMessage,
     StreamDone,

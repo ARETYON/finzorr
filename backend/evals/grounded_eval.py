@@ -82,7 +82,7 @@ async def _eval_rag(prompt: str) -> list[str]:
     import uuid
 
     from app.documents.ingest import ingest_document
-    from app.rag.vector_store import delete_tenant
+    from app.infrastructure.vector_store import delete_tenant
     from app.specialists.rag import rag_node
 
     tenant_uuid = uuid.uuid4()
