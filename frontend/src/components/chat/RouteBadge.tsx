@@ -3,11 +3,11 @@ import type { ReactElement } from 'react'
 
 const ROUTE_META: Record<string, { label: string; icon: ReactElement; className: string }> = {
   general_chat: { label: 'Chat', icon: <Bot size={12} />, className: 'bg-chip text-ink-mid' },
-  memory: { label: 'Watchlist', icon: <ListChecks size={12} />, className: 'bg-violet-100 text-violet-700' },
-  rag: { label: 'Documents', icon: <FileText size={12} />, className: 'bg-emerald-100 text-emerald-700' },
-  web_search: { label: 'Web', icon: <Globe size={12} />, className: 'bg-sky-100 text-sky-700' },
-  nl2sql: { label: 'Screener', icon: <Database size={12} />, className: 'bg-amber-100 text-amber-700' },
-  tools: { label: 'Market Data', icon: <Wrench size={12} />, className: 'bg-rose-100 text-rose-700' },
+  memory: { label: 'Watchlist', icon: <ListChecks size={12} />, className: 'bg-route-memory text-route-memory-ink' },
+  rag: { label: 'Documents', icon: <FileText size={12} />, className: 'bg-route-rag text-route-rag-ink' },
+  web_search: { label: 'Web', icon: <Globe size={12} />, className: 'bg-route-web text-route-web-ink' },
+  nl2sql: { label: 'Screener', icon: <Database size={12} />, className: 'bg-route-nl2sql text-route-nl2sql-ink' },
+  tools: { label: 'Market Data', icon: <Wrench size={12} />, className: 'bg-route-tools text-route-tools-ink' },
 }
 
 export default function RouteBadge({ route, reason }: { route: string; reason?: string }) {

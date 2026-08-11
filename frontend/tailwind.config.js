@@ -4,7 +4,7 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Semantic tokens driven by CSS variables (see src/index.css).
+        // Semantic tokens driven by CSS variables (see src/design-system/tokens.css).
         surface: 'rgb(var(--surface) / <alpha-value>)',
         panel: 'rgb(var(--panel) / <alpha-value>)',
         chip: 'rgb(var(--chip) / <alpha-value>)',
@@ -25,6 +25,18 @@ export default {
         ok: 'rgb(var(--ok) / <alpha-value>)',
         warn: 'rgb(var(--warn) / <alpha-value>)',
         danger: 'rgb(var(--danger) / <alpha-value>)',
+        // Route-badge tokens (see RouteBadge.tsx) — same pattern as every
+        // other semantic color, replacing a hardcoded Tailwind palette.
+        'route-memory': 'rgb(var(--route-memory) / <alpha-value>)',
+        'route-memory-ink': 'rgb(var(--route-memory-ink) / <alpha-value>)',
+        'route-rag': 'rgb(var(--route-rag) / <alpha-value>)',
+        'route-rag-ink': 'rgb(var(--route-rag-ink) / <alpha-value>)',
+        'route-web': 'rgb(var(--route-web) / <alpha-value>)',
+        'route-web-ink': 'rgb(var(--route-web-ink) / <alpha-value>)',
+        'route-nl2sql': 'rgb(var(--route-nl2sql) / <alpha-value>)',
+        'route-nl2sql-ink': 'rgb(var(--route-nl2sql-ink) / <alpha-value>)',
+        'route-tools': 'rgb(var(--route-tools) / <alpha-value>)',
+        'route-tools-ink': 'rgb(var(--route-tools-ink) / <alpha-value>)',
         // Legacy brand scale (kept for light-theme gradients on the login page).
         brand: {
           50: '#eef6ff',
