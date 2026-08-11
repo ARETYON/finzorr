@@ -13,14 +13,14 @@ ever completing — a live deadlock, not a slow query. Running this once,
 single-process, before workers start means every worker's first
 `get_graph()` call finds the schema already present and skips setup().
 
-Usage: docker compose run --rm api python -m app.graph.setup_checkpointer
+Usage: docker compose run --rm api python -m app.orchestration.setup_checkpointer
 """
 
 import asyncio
 from typing import Any, cast
 
 from app.core.logging import log
-from app.graph.graph import _pg_dsn  # noqa: SLF001 — intentional reuse, not a public API
+from app.orchestration.graph import _pg_dsn  # noqa: SLF001 — intentional reuse, not a public API
 
 
 async def _setup() -> None:

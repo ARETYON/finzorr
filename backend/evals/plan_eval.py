@@ -18,7 +18,7 @@ from typing import Any
 
 
 def run_offline() -> int:
-    from app.graph.supervisor import PARALLELIZABLE, validate_plan
+    from app.orchestration.supervisor import PARALLELIZABLE, validate_plan
     from app.specialists.advance import after_step
     from app.specialists.parallel import PARALLEL_ROUTES
 
@@ -45,7 +45,7 @@ def run_offline() -> int:
     check("memory-not-parallel", "memory" not in PARALLELIZABLE)
 
     # --- parallel dependency guard (lexical; anchored markers only)
-    from app.graph.supervisor import _steps_look_dependent
+    from app.orchestration.supervisor import _steps_look_dependent
 
     dependent = [
         {"route": "web_search", "task": "find RIL news"},
@@ -65,7 +65,7 @@ def run_offline() -> int:
     check("first-step-exempt", _steps_look_dependent([dependent[1]]) is False)
 
     # --- after_step decision table
-    from app.graph.state import AssistantState
+    from app.orchestration.state import AssistantState
 
     steps2 = [{"route": "web_search", "task": "a"}, {"route": "tools", "task": "b"}]
     mid: AssistantState = {"plan_steps": steps2, "plan_index": 1, "step_outputs": [{}]}
@@ -164,9 +164,9 @@ JUDGE_PROMPTS = [
 
 
 async def run_live(min_score: float | None = None) -> int:
-    from app.graph.supervisor import plan_and_route
     from app.infrastructure.llm.base import SystemMessage, UserMessage
     from app.infrastructure.llm.completion import complete
+    from app.orchestration.supervisor import plan_and_route
 
     scores: list[int] = []
     for prompt, expectation in JUDGE_PROMPTS:

@@ -256,7 +256,7 @@ async def pending_approval(
     a refresh mid-approval orphans the turn (the banner lived only in React
     state)."""
     await _owned_session(db, session_id, user)
-    from app.graph.turn import get_parked_approval
+    from app.orchestration.turn import get_parked_approval
 
     parked = await get_parked_approval(session_id)
     return PendingApprovalOut(

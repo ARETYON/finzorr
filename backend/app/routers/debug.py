@@ -30,7 +30,7 @@ async def echo(message: str) -> dict[str, str]:
 @router.get("/route/{route_name}")
 async def run_route(route_name: str, q: str) -> dict[str, Any]:
     """Run one specialist node standalone (no supervisor, no persistence)."""
-    from app.graph.state import AssistantState
+    from app.orchestration.state import AssistantState
 
     nodes: dict[str, Any] = {}
     from app.specialists.general_chat import general_chat_node

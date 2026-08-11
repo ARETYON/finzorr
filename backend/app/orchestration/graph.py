@@ -30,8 +30,8 @@ from sqlalchemy.exc import InterfaceError, OperationalError
 from app.core.config import settings
 from app.core.logging import log
 from app.core.otel import span
-from app.graph.state import AssistantState
-from app.graph.supervisor import ROUTES, plan_and_route, route_selector
+from app.orchestration.state import AssistantState
+from app.orchestration.supervisor import ROUTES, plan_and_route, route_selector
 from app.specialists.advance import advance_node, after_step
 from app.specialists.compose import compose_node
 from app.specialists.general_chat import general_chat_node

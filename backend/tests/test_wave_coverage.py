@@ -9,9 +9,9 @@ from typing import Any
 import pytest
 from httpx import AsyncClient
 
-from app.graph.state import AssistantState
 from app.infrastructure.db.session import SessionLocal
 from app.models.message import Message
+from app.orchestration.state import AssistantState
 from app.specialists.memory import _apply_actions, _get_alerts, _get_watchlist, parse_reply
 from app.specialists.replan import replan_node
 

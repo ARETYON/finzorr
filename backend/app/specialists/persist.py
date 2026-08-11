@@ -15,13 +15,13 @@ from sqlalchemy.exc import InterfaceError, OperationalError
 from app.core.logging import log
 from app.core.prompt_registry import render_agent_prompt
 from app.core.tasks import spawn
-from app.graph.state import AssistantState
 from app.infrastructure.db.session import SessionLocal
 from app.infrastructure.llm.base import UserMessage as AiUserMessage
 from app.infrastructure.llm.completion import complete
 from app.models.chat_session import ChatSession
 from app.models.message import Message
 from app.models.user import utcnow
+from app.orchestration.state import AssistantState
 from app.specialists.base import Specialist
 
 TITLE_MAX_CHARS = 60

@@ -36,7 +36,7 @@ async def test_traced_passes_graph_interrupt_through(
 ) -> None:
     from langgraph.errors import GraphInterrupt
 
-    from app.graph.graph import traced
+    from app.orchestration.graph import traced
 
     async def interrupting(_state: Any) -> Any:
         raise GraphInterrupt(())
@@ -50,7 +50,7 @@ async def test_traced_tags_degraded_on_step_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from app.core import trace as trace_mod
-    from app.graph.graph import traced
+    from app.orchestration.graph import traced
 
     tagged: list[str] = []
     monkeypatch.setattr(trace_mod, "tag", lambda *t: tagged.extend(t))
@@ -75,7 +75,7 @@ async def test_traced_tagging_failure_never_breaks_the_node(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from app.core import trace as trace_mod
-    from app.graph.graph import traced
+    from app.orchestration.graph import traced
 
     def exploding_tag(*_t: str) -> None:
         raise RuntimeError("tracer down")

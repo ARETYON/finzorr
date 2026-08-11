@@ -12,7 +12,7 @@ specialist internals.
 
 from typing import Protocol
 
-from app.graph.state import AssistantState
+from app.orchestration.state import AssistantState
 
 
 class Specialist(Protocol):

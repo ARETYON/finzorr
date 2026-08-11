@@ -9,7 +9,7 @@
 #
 # Fix: terminate the stuck backends, drop the half-built (invalid) index,
 # run the new one-off setup_checkpointer step ONCE before workers start
-# (see app/graph/setup_checkpointer.py), then restart. Safe to re-run.
+# (see app/orchestration/setup_checkpointer.py), then restart. Safe to re-run.
 #
 # Self-updates /opt/finzorr first — safe to invoke from any directory.
 # Usage: sudo bash deploy/recover-checkpointer-race.sh
@@ -41,7 +41,7 @@ echo "==> 2/4 Stopping api (so no worker can race the setup step below)"
 docker compose -f "${COMPOSE_FILE}" stop api
 
 echo "==> 3/4 Running checkpointer setup once, single-process"
-docker compose -f "${COMPOSE_FILE}" run --rm api python -m app.graph.setup_checkpointer
+docker compose -f "${COMPOSE_FILE}" run --rm api python -m app.orchestration.setup_checkpointer
 
 echo "==> 4/4 Restarting api"
 docker compose -f "${COMPOSE_FILE}" up -d api

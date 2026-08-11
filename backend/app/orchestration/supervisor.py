@@ -13,10 +13,10 @@ from typing import Any
 from app.core.config import settings
 from app.core.logging import log
 from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
-from app.graph.state import AssistantState
-from app.graph.streaming import emit_frame
 from app.infrastructure.llm.base import SystemMessage, UserMessage
 from app.infrastructure.llm.completion import complete
+from app.orchestration.state import AssistantState
+from app.orchestration.streaming import emit_frame
 
 ROUTES: frozenset[str] = frozenset(
     {"general_chat", "memory", "rag", "web_search", "nl2sql", "tools", "research"}

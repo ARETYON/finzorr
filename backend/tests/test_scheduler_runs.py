@@ -288,7 +288,7 @@ async def test_due_task_runs_turn_in_own_session(
         calls.append((session_id, user_id_, user_name, prompt))
         origins.append(origin)
 
-    monkeypatch.setattr("app.graph.turn.run_turn", fake_run_turn)
+    monkeypatch.setattr("app.orchestration.turn.run_turn", fake_run_turn)
 
     await _run_tasks(MONDAY_OPEN)
 
@@ -328,7 +328,7 @@ async def test_not_due_or_inactive_tasks_skipped(
     ) -> None:
         raise AssertionError("no task should run")
 
-    monkeypatch.setattr("app.graph.turn.run_turn", fail_run_turn)
+    monkeypatch.setattr("app.orchestration.turn.run_turn", fail_run_turn)
     await _run_tasks(MONDAY_OPEN)
 
 
@@ -348,7 +348,7 @@ async def test_task_failure_releases_key_and_keeps_last_run_unset(
     ) -> None:
         raise RuntimeError("turn boom")
 
-    monkeypatch.setattr("app.graph.turn.run_turn", broken_run_turn)
+    monkeypatch.setattr("app.orchestration.turn.run_turn", broken_run_turn)
 
     await _run_tasks(MONDAY_OPEN)
 

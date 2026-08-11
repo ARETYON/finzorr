@@ -67,7 +67,7 @@ async def test_observe_only_graph_input_identical(
 ) -> None:
     """M8: suspicious vs benign turns hand the graph IDENTICAL inputs —
     the guard only adds a trace tag."""
-    from app.graph import turn as turn_mod
+    from app.orchestration import turn as turn_mod
 
     captured: list[dict[str, Any]] = []
     tags_seen: list[list[str]] = []

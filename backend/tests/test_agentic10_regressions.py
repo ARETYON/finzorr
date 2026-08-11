@@ -17,7 +17,7 @@ pytestmark = pytest.mark.sanity
 
 class TestValidatePlan:
     def test_single_and_multi_step(self) -> None:
-        from app.graph.supervisor import validate_plan
+        from app.orchestration.supervisor import validate_plan
 
         steps = validate_plan(
             [
@@ -29,7 +29,7 @@ class TestValidatePlan:
         assert [s["route"] for s in steps] == ["web_search", "tools"]
 
     def test_unknown_routes_dropped_and_capped(self) -> None:
-        from app.graph.supervisor import validate_plan
+        from app.orchestration.supervisor import validate_plan
 
         steps = validate_plan(
             [
@@ -47,7 +47,7 @@ class TestValidatePlan:
         assert all(s["task"] for s in steps)  # empty task fell back to user_msg
 
     def test_garbage_yields_empty(self) -> None:
-        from app.graph.supervisor import validate_plan
+        from app.orchestration.supervisor import validate_plan
 
         assert validate_plan("not a list", "m") == []
         assert validate_plan(["just strings"], "m") == []
@@ -95,7 +95,7 @@ class TestPlanStateMachine:
         assert "route" not in out  # nothing more to arm
 
     def test_after_step_routing(self) -> None:
-        from app.graph.state import AssistantState
+        from app.orchestration.state import AssistantState
         from app.specialists.advance import after_step
 
         steps = [{"route": "web_search", "task": "a"}, {"route": "tools", "task": "b"}]
@@ -237,7 +237,7 @@ class TestDegradedReattach:
         freezing forever, and the fast path honors it."""
         import inspect
 
-        from app.graph import graph as graph_mod
+        from app.orchestration import graph as graph_mod
 
         source = inspect.getsource(graph_mod.get_graph)
         assert "_degraded_retry_at" in source

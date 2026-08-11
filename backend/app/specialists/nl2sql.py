@@ -4,11 +4,11 @@ from datetime import UTC, datetime
 
 from app.core.logging import log
 from app.core.prompt_registry import render_agent_prompt
-from app.graph.state import AssistantState
-from app.graph.streaming import emit_frame
 from app.infrastructure.llm.base import SystemMessage, UserMessage
 from app.infrastructure.llm.completion import stream
 from app.nl2sql.agent import rows_preview, run_query
+from app.orchestration.state import AssistantState
+from app.orchestration.streaming import emit_frame
 from app.specialists.base import Specialist
 from app.specialists.common import step_context, task_for, with_instructions
 

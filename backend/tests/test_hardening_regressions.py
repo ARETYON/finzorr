@@ -290,7 +290,7 @@ class TestTurnDeadline:
     ) -> None:
         import uuid
 
-        from app.graph import turn
+        from app.orchestration import turn
 
         class HangingGraph:
             async def astream(self, *_a: Any, **_k: Any) -> Any:

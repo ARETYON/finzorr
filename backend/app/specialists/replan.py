@@ -13,10 +13,10 @@ from typing import Any
 
 from app.core.logging import log
 from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
-from app.graph.state import AssistantState
-from app.graph.streaming import emit_frame
-from app.graph.supervisor import validate_plan
 from app.infrastructure.llm.base import SystemMessage, UserMessage
+from app.orchestration.state import AssistantState
+from app.orchestration.streaming import emit_frame
+from app.orchestration.supervisor import validate_plan
 from app.specialists.base import Specialist
 
 register(

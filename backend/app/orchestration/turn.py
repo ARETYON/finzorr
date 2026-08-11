@@ -21,11 +21,11 @@ from app.core.logging import log, new_correlation_id
 from app.core.otel import span
 from app.core.tasks import spawn
 from app.core.untrusted import wrap_untrusted
-from app.graph.graph import get_graph
-from app.graph.state import AssistantState
 from app.infrastructure.db.session import SessionLocal
 from app.models.message import Message
 from app.models.user import User
+from app.orchestration.graph import get_graph
+from app.orchestration.state import AssistantState
 
 HISTORY_RELOAD_LIMIT = 24  # degraded-mode (no checkpointer) history window
 

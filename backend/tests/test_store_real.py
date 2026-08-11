@@ -31,7 +31,7 @@ async def test_real_store_put_search_delete(_database: None) -> None:
     from psycopg.rows import dict_row
     from psycopg_pool import AsyncConnectionPool
 
-    from app.graph.graph import _pg_dsn
+    from app.orchestration.graph import _pg_dsn
 
     pool: Any = AsyncConnectionPool(
         _pg_dsn(),

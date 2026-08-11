@@ -57,7 +57,7 @@ def shape_facts(raw_facts: list[Any]) -> list[str]:
 
 def _store() -> "Any | None":
     """LangGraph BaseStore when the pgvector index is up; None => Qdrant."""
-    from app.graph.graph import get_store
+    from app.orchestration.graph import get_store
 
     return get_store()
 

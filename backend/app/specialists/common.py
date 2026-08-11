@@ -1,7 +1,7 @@
 """Helpers shared by every specialist node."""
 
 from app.core.untrusted import wrap_untrusted
-from app.graph.state import AssistantState
+from app.orchestration.state import AssistantState
 
 
 def with_instructions(system_content: str, state: AssistantState) -> str:

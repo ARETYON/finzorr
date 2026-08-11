@@ -17,8 +17,6 @@ from langgraph.types import interrupt
 from app.core.logging import log
 from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
 from app.core.request_context import user_context
-from app.graph.state import AssistantState
-from app.graph.streaming import emit_frame
 from app.infrastructure.llm.base import (
     AssistantMessage,
     ChatMessage,
@@ -28,6 +26,8 @@ from app.infrastructure.llm.base import (
     UserMessage,
 )
 from app.infrastructure.llm.completion import stream
+from app.orchestration.state import AssistantState
+from app.orchestration.streaming import emit_frame
 from app.specialists.base import Specialist
 from app.specialists.common import step_context, task_for, with_instructions
 from app.specialists.general_chat import build_history

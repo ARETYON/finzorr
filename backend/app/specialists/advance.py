@@ -11,8 +11,8 @@ a crash mid-plan resumes with earlier steps' outputs intact.
 from typing import Any
 
 from app.core.logging import log
-from app.graph.state import AssistantState
-from app.graph.streaming import emit_frame
+from app.orchestration.state import AssistantState
+from app.orchestration.streaming import emit_frame
 from app.specialists.base import Specialist
 
 STEP_RECORD_CHARS = 2000  # stored per step in state (checkpointed)

@@ -130,7 +130,7 @@ def _score(predict: dict[str, str]) -> float:
 
 
 def run_offline() -> float:
-    from app.graph.supervisor import keyword_route
+    from app.orchestration.supervisor import keyword_route
 
     print("== deterministic keyword floor (core) ==")
     accuracy = _score({m: keyword_route(m) for m, _ in DATASET})
@@ -143,7 +143,7 @@ def run_offline() -> float:
 
 
 async def run_live() -> float:
-    from app.graph.supervisor import plan_and_route
+    from app.orchestration.supervisor import plan_and_route
 
     print("== live LLM supervisor ==")
     predictions: dict[str, str] = {}

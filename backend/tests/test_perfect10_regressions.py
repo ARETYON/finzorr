@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from app.graph.graph import _research_search_key
+from app.orchestration.graph import _research_search_key
 from app.specialists.compose import renumber_steps
 
 pytestmark = pytest.mark.sanity
@@ -118,7 +118,7 @@ class _FakeStore:
 
 @pytest.fixture
 def fake_store(monkeypatch: pytest.MonkeyPatch) -> _FakeStore:
-    from app.graph import graph as graph_mod
+    from app.orchestration import graph as graph_mod
 
     store = _FakeStore()
     monkeypatch.setattr(graph_mod, "get_store", lambda: store)

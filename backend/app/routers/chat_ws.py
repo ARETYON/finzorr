@@ -25,13 +25,13 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.auth.dependencies import get_ws_user
 from app.core.config import settings
 from app.core.logging import log
-from app.graph.turn import record_out_of_band_turn, resume_turn, run_turn
 from app.infrastructure.db.session import SessionLocal
 from app.infrastructure.rate_limit import check_rate_limit
 from app.infrastructure.turn_lock import claim as claim_turn
 from app.infrastructure.turn_lock import release as release_turn
 from app.models.chat_session import ChatSession
 from app.models.user import User
+from app.orchestration.turn import record_out_of_band_turn, resume_turn, run_turn
 
 router = APIRouter(tags=["chat-ws"])
 
@@ -210,7 +210,7 @@ class _Connection:
     async def _run_resume(self, session_id: uuid.UUID, approved: bool) -> None:
         # Same partial-mirror discipline as _run: an error or cancel mid-
         # resume must not lose streamed tokens or the parked user message.
-        from app.graph.turn import get_parked_approval
+        from app.orchestration.turn import get_parked_approval
 
         parked = await get_parked_approval(session_id)
         parked_msg = str((parked or {}).get("user_msg", "")) or "(approval decision)"

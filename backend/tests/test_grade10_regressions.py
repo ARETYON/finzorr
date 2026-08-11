@@ -17,7 +17,7 @@ pytestmark = pytest.mark.sanity
 
 class TestCappedMessages:
     def test_caps_at_newest_60(self) -> None:
-        from app.graph.state import MESSAGES_CAP, capped_messages
+        from app.orchestration.state import MESSAGES_CAP, capped_messages
 
         existing = [{"role": "user", "content": str(i)} for i in range(100)]
         merged = capped_messages(existing, [{"role": "assistant", "content": "new"}])
@@ -26,7 +26,7 @@ class TestCappedMessages:
         assert merged[0]["content"] == str(100 - MESSAGES_CAP + 1)  # oldest dropped
 
     def test_small_lists_pass_through(self) -> None:
-        from app.graph.state import capped_messages
+        from app.orchestration.state import capped_messages
 
         assert capped_messages([{"role": "user", "content": "a"}], []) == [
             {"role": "user", "content": "a"}
@@ -53,8 +53,8 @@ class TestWithInstructions:
 
 class TestRoutingContext:
     def test_includes_previous_exchange_truncated(self) -> None:
-        from app.graph.state import AssistantState
-        from app.graph.supervisor import _CONTEXT_CHARS, _routing_context
+        from app.orchestration.state import AssistantState
+        from app.orchestration.supervisor import _CONTEXT_CHARS, _routing_context
 
         state: AssistantState = {
             "messages": [
@@ -67,7 +67,7 @@ class TestRoutingContext:
         assert "x" * (_CONTEXT_CHARS + 1) not in context  # truncated
 
     def test_empty_without_history(self) -> None:
-        from app.graph.supervisor import _routing_context
+        from app.orchestration.supervisor import _routing_context
 
         assert _routing_context({}) == ""
         assert _routing_context({"messages": []}) == ""

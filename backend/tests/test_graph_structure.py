@@ -3,8 +3,8 @@
 import pytest
 
 from app.core.prompt_registry import AGENT_PROMPTS, render_agent_prompt
-from app.graph.graph import BRANCHES, build_graph
-from app.graph.supervisor import ROUTES
+from app.orchestration.graph import BRANCHES, build_graph
+from app.orchestration.supervisor import ROUTES
 
 pytestmark = pytest.mark.sanity
 

@@ -15,7 +15,7 @@ from typing import Any
 
 from app.core.logging import log
 from app.core.otel import span
-from app.graph.state import AssistantState
+from app.orchestration.state import AssistantState
 from app.specialists.base import Specialist
 
 # Send payloads REPLACE the node input (no merge with graph state), so the

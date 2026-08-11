@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.graph.supervisor import ROUTES, keyword_route
+from app.orchestration.supervisor import ROUTES, keyword_route
 
 pytestmark = pytest.mark.sanity
 
@@ -59,7 +59,7 @@ class TestParallelDependencyGuard:
     feed-forward). Anchoring matters: screener language must never demote."""
 
     def test_referential_later_step_is_dependent(self) -> None:
-        from app.graph.supervisor import _steps_look_dependent
+        from app.orchestration.supervisor import _steps_look_dependent
 
         assert _steps_look_dependent(
             [
@@ -81,7 +81,7 @@ class TestParallelDependencyGuard:
         )
 
     def test_screener_language_never_demotes(self) -> None:
-        from app.graph.supervisor import _steps_look_dependent
+        from app.orchestration.supervisor import _steps_look_dependent
 
         assert not _steps_look_dependent(
             [
@@ -97,7 +97,7 @@ class TestParallelDependencyGuard:
         )
 
     def test_first_step_is_exempt(self) -> None:
-        from app.graph.supervisor import _steps_look_dependent
+        from app.orchestration.supervisor import _steps_look_dependent
 
         assert not _steps_look_dependent(
             [{"route": "general_chat", "task": "summarise the result of the match"}]
@@ -111,7 +111,7 @@ async def test_plan_acceptance_demotes_dependent_parallel(
     step must come out plan_parallel=False through the REAL plan_and_route."""
     from typing import Any
 
-    from app.graph import supervisor as sup
+    from app.orchestration import supervisor as sup
 
     async def scripted(*_a: Any, **_k: Any) -> str:
         return (
@@ -144,21 +144,21 @@ class TestDocumentAwareRouting:
     """The design gap found live: uploads must influence routing."""
 
     def test_filename_mention_floors_to_rag(self) -> None:
-        from app.graph.supervisor import keyword_route
+        from app.orchestration.supervisor import keyword_route
 
         docs = ["Q3-results.pdf", "holdings.xlsx"]
         assert keyword_route("summarise q3-results for me", docs) == "rag"
         assert keyword_route("what does HOLDINGS say?", docs) == "rag"
 
     def test_short_stems_never_trigger(self) -> None:
-        from app.graph.supervisor import keyword_route
+        from app.orchestration.supervisor import keyword_route
 
         # a 1-3 char stem would match everywhere — must be ignored
         assert keyword_route("what is a pe ratio", ["pe.csv"]) != "rag" or True
         assert keyword_route("hello there", ["hi.pdf"]) == "general_chat"
 
     def test_no_documents_keeps_old_behavior(self) -> None:
-        from app.graph.supervisor import keyword_route
+        from app.orchestration.supervisor import keyword_route
 
         assert keyword_route("latest news on TCS", []) == "web_search"
         assert keyword_route("latest news on TCS", None) == "web_search"
@@ -171,7 +171,7 @@ async def test_planner_prompt_carries_document_list(
     that's what lets a content question route to rag without magic words."""
     from typing import Any
 
-    from app.graph import supervisor as sup
+    from app.orchestration import supervisor as sup
 
     seen: dict[str, str] = {}
 
