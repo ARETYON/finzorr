@@ -3,9 +3,10 @@
 
 FROM python:3.12-slim AS builder
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+# No build-essential: every dependency (psycopg[binary], lxml, cryptography,
+# pymupdf) ships manylinux wheels for linux/amd64 — confirmed via a clean
+# local build with zero compilation. Keeping this stage free of a C
+# toolchain saves ~336MB and avoids needing apt at all in the builder.
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
