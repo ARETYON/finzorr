@@ -88,11 +88,13 @@ export default function MessageInput({
         const { token } = await uploadAttachment(file)
         setAttachment({ token, name: file.name })
       }
-    } catch {
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       toast.error(
-        isDoc
-          ? 'Document upload failed (max 10MB; PDF/DOCX/PPTX/XLSX/XLS/CSV/TXT/MD)'
-          : 'Image upload failed (PNG/JPEG, max 5MB)'
+        detail ??
+          (isDoc
+            ? 'Document upload failed — check the file type and size'
+            : 'Image upload failed (PNG/JPEG, max 5MB)')
       )
     } finally {
       setUploading(false)

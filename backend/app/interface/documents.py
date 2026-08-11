@@ -55,7 +55,10 @@ async def _read_capped(file: UploadFile, max_bytes: int) -> bytes:
     while chunk := await file.read(_READ_CHUNK):
         total += len(chunk)
         if total > max_bytes:
-            raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "file exceeds size limit")
+            raise HTTPException(
+                status.HTTP_413_CONTENT_TOO_LARGE,
+                f"file exceeds the {max_bytes // (1024 * 1024)}MB size limit",
+            )
         chunks.append(chunk)
     return b"".join(chunks)
 
