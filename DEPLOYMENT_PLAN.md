@@ -1,9 +1,37 @@
 # finzorr.ai — Production Deployment Plan (OVH VM + Cloudflare)
 
-**Status: PLAN ONLY — nothing in this document has been implemented yet.**
-This is the complete blueprint for taking finzorr live at https://finzorr.ai
-using the OVH VM and the Cloudflare account (domain already configured).
-When you decide to go live, this document is the script we follow.
+**Status: IMPLEMENTED AND LIVE** at https://finzorr.ai (frontend) and
+https://api.finzorr.ai (backend). Everything in this document has been
+built, deployed, and battle-tested in production — this is now both the
+historical record of what was built AND the operational runbook for
+running it day-to-day. §9 and §10 (new) capture every real incident hit
+along the way and how to recover from each; that section only exists
+because these problems actually happened in production, not as
+hypothetical risk analysis.
+
+## Reusing this playbook for a new AI agent
+
+The architecture here — Cloudflare Tunnel for a zero-inbound-port backend,
+Cloudflare Pages for the static frontend, a GitHub Actions self-hosted
+runner for SSH-less CD, Docker Compose for the app stack, and a free-tier
+LLM provider chain for $0 steady-state cost — is a general pattern, not
+finzorr-specific. To stand up a new agent on the same pattern, this
+document stays the script to follow; swap these values throughout:
+
+| Placeholder (finzorr's actual value) | Where it shows up |
+|---|---|
+| `finzorr` (repo name, GHCR image name, Cloudflare Pages project name, systemd runner label) | Everywhere — `deploy/*.sh`, `.github/workflows/*.yml`, `frontend/wrangler.toml` |
+| `finzorr.ai` / `api.finzorr.ai` (domain + subdomain) | Cloudflare Pages custom domain, Tunnel public hostname, `COOKIE_DOMAIN`/`FRONTEND_ORIGIN` in prod.env, Google OAuth authorized origins |
+| `ARETYON/finzorr` (GitHub owner/repo) | `vm-bootstrap.sh`'s `REPO_URL`/`gh api` calls, `cd-prod.yml`'s runner registration |
+| `ghcr.io/aretyon/finzorr-backend` (GHCR image path) | `docker-compose.prod.yml`, `cd-prod.yml`, `deploy.sh` |
+| `/opt/<name>` (server install directory) | Every script in `deploy/` |
+| Groq/Gemini as the LLM chain | `app/infrastructure/llm/` — swap providers here if the new agent needs different models; the free-tier-chain-with-graceful-degradation PATTERN is what's reusable, not these specific vendors |
+| The six containers (api/postgres/redis/qdrant/ollama/cloudflared) | `docker-compose.prod.yml` — a new agent may need fewer (e.g. no vector DB if it doesn't do RAG) or more; the "no published ports, only cloudflared talks outbound" shape is what to keep |
+
+Everything else below — the Cloudflare Tunnel setup mechanics, the
+self-hosted-runner-instead-of-SSH security rationale, the incident list in
+§9, the emergency manual-deploy procedure in §10 — transfers directly with
+no changes.
 
 ---
 
@@ -133,30 +161,31 @@ added before, during, or after initial launch without blocking it.**
 
 ---
 
-## 3. What gets built in the repo (the coding work, when approved)
+## 3. What was built in the repo — the deployment-infra file inventory
 
-These are the files the implementation wave will add — none exist yet:
-
-| File | Purpose |
-|---|---|
-| `backend/Dockerfile` + `.dockerignore` | Packages the backend as a container image (python 3.12-slim, locked deps, non-root user, 2 uvicorn workers) |
-| `deploy/docker-compose.prod.yml` | The six-container stack above — pinned image versions, memory caps, named volumes (data survives redeploys), **no published ports** |
-| `deploy/prod.env.template` | Every config value pre-filled except the four you paste; becomes `/opt/finzorr/prod.env` on the VM |
-| `deploy/vm-bootstrap.sh` | The ONE script you run on the server — installs Docker, lays out `/opt/finzorr`, prompts for your four values, builds the image, runs database migrations, pulls the two small local models, seeds the glossary + fundamentals, installs the backup cron, health-checks, **and installs + registers the GitHub Actions self-hosted runner as a systemd service** (using `gh` CLI to mint a fresh runner registration token — no extra manual paste needed since you're already `gh auth login`'d) |
-| `deploy/deploy.sh` | Day-2 deploys: `./deploy/deploy.sh <tag>` (run from `/opt/finzorr`) — pull image, migrate, restart, health-check. Rollback = same command with the previous tag (<5 min); also what the CD workflow below runs |
-| `deploy/backup.sh` | Nightly compressed Postgres dump, 14-day rotation |
-| `.github/workflows/cd-prod.yml` | After first launch: every push to main builds+pushes the image to GHCR (GitHub-hosted runner), then a second job — gated by the `production` Environment's required-reviewer approval — runs on a **self-hosted runner installed ON your server** and executes `deploy/deploy.sh <tag>` locally. No SSH from GitHub to your server at any point; the runner polls GitHub outbound, same shape as `cloudflared` itself, so zero new inbound exposure. Uses only the built-in `GITHUB_TOKEN` — no SSH key or other secret lives in GitHub |
-| `frontend/wrangler.toml` | Cloudflare Pages project config (project name `finzorr`, build output `dist`) so the frontend deploys via `wrangler pages deploy` directly instead of Git-integration auto-builds |
-| Code fix: multi-origin | Backend accepts both `https://finzorr.ai` and `https://www.finzorr.ai` (today it allows exactly one origin) |
-| Code fix: uploads volume | Uploaded PDFs/images move to a persistent volume (today they'd be lost on redeploy) |
-| `frontend/public/_redirects` | One line so refreshing `/chat` or opening a share link directly doesn't 404 on Cloudflare Pages |
-| `frontend/src/pages/Privacy.tsx` + `Terms.tsx` | Required: Google will not allow public OAuth login without a published privacy-policy URL |
+| File | Purpose | Status |
+|---|---|---|
+| `backend/Dockerfile` + `.dockerignore` | Packages the backend as a container image (python 3.12-slim, locked deps, non-root `app` user, 2 uvicorn workers, `tesseract-ocr` for scanned-PDF fallback) | ✅ Built, live |
+| `deploy/docker-compose.prod.yml` | The six-container stack (§1) — pinned image versions, memory caps, named volumes (`finzorr_pgdata`, `finzorr_qdrant`, `finzorr_ollama`, `finzorr_uploads`), **no published ports** | ✅ Built, live |
+| `deploy/vm-bootstrap.sh` | The ONE script run once on a fresh server — installs Docker, `gh` CLI, lays out `/opt/finzorr`, prompts for 4 values, writes `prod.env` (idempotent — reuses existing secrets on a re-run instead of minting new ones that would mismatch already-initialized data), builds a local `:bootstrap` image, migrates + seeds the DB, brings the stack up, health-checks, **and installs + registers the GitHub Actions self-hosted runner as a systemd service** | ✅ Built, ran once at launch — **does NOT install a backup cron** (explicitly out of scope, flagged in the script's own header comment, not silently skipped) |
+| `deploy/deploy.sh` | Day-2 deploys: `./deploy/deploy.sh <tag>` (run from `/opt/finzorr`, or by `cd-prod.yml`'s deploy job) — pull image from GHCR, migrate, run checkpointer setup, restart, health-check. Rollback = same command with the previous tag | ✅ Built, live — **requires `IMAGE_TAG` to already exist on GHCR**, will NOT work with a local-only tag (see §10) |
+| `deploy/wait-healthy.sh` | Shared health-check poll loop, factored out of `deploy.sh` so scripts with an already-running container (a local-only bootstrap image that was never `docker compose pull`-able) don't need `deploy.sh`'s pull+migrate+up steps just to wait for health | ✅ Built, live |
+| `deploy/recover-embed-url.sh` | One-off historical fix for servers bootstrapped before a since-fixed bug where `prod.env` never set `EMBED_OLLAMA_URL`/`OLLAMA_URL`, breaking corpus/fundamentals seeding | ✅ Built, historical — not needed on a fresh `vm-bootstrap.sh` run today, kept for any server still on an old prod.env |
+| `deploy/recover-checkpointer-race.sh` | Incident-specific recovery for the checkpointer cross-worker deadlock (§9.3) — terminates stuck DB backends, drops the half-built index, re-runs setup single-process, restarts. **Not a general-purpose deploy script** — see §9.3 before reaching for it | ✅ Built, used |
+| `deploy/backup.sh` | Nightly compressed Postgres dump, 14-day rotation | ❌ **NOT BUILT** — `vm-bootstrap.sh`'s own header comment flags this explicitly. The Day-2 ops table (§6) below is honest about this being a real, currently-open gap, not a "just run this" item |
+| `.github/workflows/cd-prod.yml` | Every push to `main` touching `backend/**`/`deploy/**` builds+pushes the image to GHCR (GitHub-hosted runner, `docker/setup-buildx-action` required — see §9.6), then a second job — gated by the `production` Environment's required-reviewer approval — runs on the **self-hosted runner on the server** and executes `deploy/deploy.sh <tag>`. No SSH from GitHub to the server at any point | ✅ Built, live — **but only works when the self-hosted runner is actually registered and its systemd service running; see §9.7 and §10 for what to do when it isn't** |
+| `.github/workflows/ci-backend.yml` / `ci-frontend.yml` | Lint/typecheck/test/eval gates on every push+PR — not deploy infrastructure per se, but what gates what's allowed to reach `cd-prod.yml` | ✅ Built, live |
+| `frontend/wrangler.toml` + Wrangler CLI (§4.2) | Cloudflare Pages project config; the frontend deploys via `wrangler pages deploy` directly, no CI step for it at all | ✅ Built, live |
+| `frontend/public/_redirects` | One line so refreshing `/chat` or opening a share link directly doesn't 404 on Cloudflare Pages | ✅ Built, live |
+| `frontend/src/pages/Privacy.tsx` + `Terms.tsx` | Required for Google to allow public (non-Testing-mode) OAuth login | ✅ Built, live |
+| Code: multi-origin CORS | Backend accepts both `https://finzorr.ai` and `https://www.finzorr.ai` | ✅ Built, live |
+| Code: uploads volume | `finzorr_uploads` volume on the `api` service — this was a **real bug that shipped and was live for a period**: uploaded PDFs were lost on every container restart while their Qdrant vectors survived, until fixed (§9.8) | ✅ Fixed, live |
 
 Security defaults baked in: `CODE_INTERPRETER=false` (the Python sandbox
 needs docker-inside-docker — a host-escape surface; stays off in prod),
 `LANGSMITH_TRACING=false` (user prompts would leave the server; enable
 deliberately if ever wanted), dev-login and debug routes automatically
-disabled outside dev (already true in the code today).
+disabled outside dev.
 
 ---
 
@@ -174,35 +203,92 @@ The script pauses four times and asks you to paste:
 4. `TUNNEL_TOKEN` (eyJ..., from step 2.5)
 
 Everything else — Docker install, database password, session secret, model
-downloads, migrations, seed data, backups cron — is automatic. It ends by
-printing a health check and `docker compose ps`; send me that output.
+downloads, migrations, seed data — is automatic. It ends by printing a
+health check and `docker compose ps`; send me that output. **Note:** this
+script deliberately does NOT install a backups cron (§3, §6) — that's a
+separate, still-open task, not part of this automated bring-up.
 
 The fundamentals-seed step doubles as the **yfinance test**: if Yahoo
 blocks OVH's datacenter IPs (a known risk), this step fails visibly and we
 choose an alternative market-data source before launch.
 
-### 4.2 Cloudflare Pages via Wrangler (frontend, ~5 minutes)
-Using the Wrangler CLI directly (not Git-integration auto-builds):
+### 4.2 Cloudflare Pages via Wrangler (frontend) — full reference
+
+Using the Wrangler CLI directly (not Git-integration auto-builds) — this
+is the ONLY way the frontend ships; there is no CI step for it, every
+deploy in this project's history has been this exact manual command,
+run from a local machine.
+
+**Install & auth (one-time per machine, not per deploy):**
+```bash
+# No global install needed — npx fetches/caches it on first use.
+# (Not a frontend/package.json devDependency in this project; if you'd
+# rather pin a version, `npm install -D wrangler` works too.)
+npx wrangler --version        # confirms it resolves; 4.x used throughout
+npx wrangler login            # opens a browser, OAuth against your
+                               # Cloudflare account — token cached at
+                               # ~/Library/Preferences/.wrangler/config/
+                               # default.toml (macOS) / equivalent per-OS
+npx wrangler whoami            # confirms which account/email you're
+                                # authenticated as before deploying
 ```
+
+**One-time project setup:**
+```bash
 cd frontend
-wrangler pages project create finzorr   # one-time
+wrangler pages project create finzorr   # one-time; project name must be
+                                         # globally unique per-account,
+                                         # not globally across Cloudflare
 echo "VITE_API_BASE_URL=https://api.finzorr.ai" >> .env.production
 echo "VITE_GOOGLE_CLIENT_ID=<your client id>" >> .env.production
-npm run build
-wrangler pages deploy dist --project-name=finzorr
 ```
 - `frontend/wrangler.toml` (checked into the repo) holds the project name
-  and build output directory so every future `wrangler pages deploy`
-  needs no flags beyond the directory.
+  and build output directory (`name = "finzorr"`,
+  `pages_build_output_dir = "dist"`) so every `wrangler pages deploy`
+  needs no flags beyond the directory itself.
+- `.env.production` is gitignored (same pattern as `.env.local`) — Vite
+  bakes `VITE_*` vars into the static build at `npm run build` time,
+  BEFORE `wrangler.toml` is even read, so this file must exist and be
+  correct before every build, not just once.
 - Custom-domain binding stays a one-time **dashboard** step (Wrangler
   doesn't cleanly automate this part today): Workers & Pages → `finzorr`
   project → Custom domains → add `finzorr.ai` and `www.finzorr.ai`
-  (Cloudflare wires the DNS itself).
-- Every subsequent release: `npm run build && wrangler pages deploy dist
-  --project-name=finzorr` — one command, run whenever you want to ship a
-  frontend update, no GitHub push required (though nothing stops you from
-  wrapping this same command in a CI step later if you want push-to-deploy
-  for the frontend too).
+  (Cloudflare wires the DNS itself — no manual DNS record creation).
+
+**Every release — the actual command run throughout this project's life:**
+```bash
+cd frontend
+npm run build
+wrangler pages deploy dist --project-name=finzorr --commit-dirty=true
+```
+- `--commit-dirty=true` is needed because this repo's frontend deploys
+  are run straight from a working tree that may have uncommitted-but-
+  already-pushed changes relative to Pages' own git-awareness — without
+  it, Wrangler warns/prompts about deploying from a "dirty" tree that
+  isn't what it expects.
+- Each run prints a unique preview URL
+  (`https://<hash>.finzorr.pages.dev`) AND promotes to the production
+  custom domain (`finzorr.ai`) in the same command — no separate
+  "promote" step needed for a deploy off `main`.
+- **Verifying a deploy actually landed**: don't trust the command's exit
+  code alone — `curl` the live site and grep the built JS asset hash out
+  of the HTML, compare it against `dist/assets/index-*.js`'s actual
+  filename from the build output. This project's deploy loop always did
+  exactly this:
+  ```bash
+  curl -s https://finzorr.ai/ | grep -o 'index-[a-zA-Z0-9]*\.js'
+  curl -s -o /dev/null -w "%{http_code}\n" https://finzorr.ai/
+  ```
+- No GitHub push required to ship a frontend change — this command is
+  the entire deploy. (Nothing stops wiring this same command into a CI
+  step later for push-to-deploy, it just isn't done here — every
+  frontend deploy in this project so far has been a deliberate manual
+  run right after verifying the change locally.)
+- **Preview URLs cannot authenticate against the real API** — they're a
+  different origin (`*.finzorr.pages.dev` vs `finzorr.ai`), so the
+  session cookie (scoped to `.finzorr.ai`) never reaches them and CORS
+  blocks the request too. Preview URLs are for eyeballing static UI
+  only; always verify real behavior against the production custom domain.
 
 ### 4.3 Cloudflare Tunnel hostname (~2 minutes)
 In the tunnel you created (Zero Trust → Networks → Tunnels →
@@ -240,6 +326,23 @@ GHCR automatically, then waits for your approval click on the deploy job,
 which runs `deploy/deploy.sh <sha>` directly on the server. Rollback is
 `workflow_dispatch` on the same workflow with a previous tag/sha as input.
 
+**This is a real single point of failure — verify it's actually running
+before trusting it.** The runner is a systemd service on the server; if it
+stops (crash, server reboot where it didn't re-register, manual `svc.sh
+stop`, or anything else), pushes to `main` build+push to GHCR successfully
+but the `deploy` job sits queued FOREVER with no error, no timeout, no
+notification — it just silently never deploys. This happened in this
+project's own history. Check runner status BEFORE assuming a push will
+actually reach production:
+```bash
+gh api repos/<owner>/<repo>/actions/runners --jq '.total_count'
+# 0 means nothing will pick up queued deploy jobs, no matter how long you wait
+```
+If it's 0, either fix the runner (SSH to the server, `sudo systemctl status
+actions.runner.*` under `/opt/<name>/actions-runner`, restart or
+re-register per vm-bootstrap.sh's §9/9 block) or use the manual emergency
+deploy path in §10 instead of waiting on a queued job that will never run.
+
 **Why not SSH:** an SSH deploy key would need to live in GitHub Secrets,
 and if it ever leaked, it's an interactive shell on the box — full reach
 to Postgres/Redis/Qdrant, not just the API. The self-hosted-runner model
@@ -263,7 +366,11 @@ Run through together once everything above is done:
 9. Send messages rapidly → rate limit responds politely
 10. `www.finzorr.ai` → works (multi-origin fix)
 11. On the VM: `docker compose logs api --tail 50` → clean JSON logs
-12. Next morning: check `/opt/finzorr/backups/` has a dump file
+12. Confirm the self-hosted runner is registered: `gh api
+    repos/<owner>/<repo>/actions/runners --jq '.total_count'` → 1
+    (§4.5, §9.7 — this silently fails to zero over time if not checked)
+13. Take a manual backup now and confirm it's restorable (§6) — there is
+    no automated nightly dump yet, so this is on you until that's built
 
 ---
 
@@ -271,17 +378,19 @@ Run through together once everything above is done:
 
 | Task | How |
 |---|---|
-| Deploy a new version | Push to `main` → approve the `production` Environment gate in the GitHub Actions run (or run `cd /opt/finzorr && sudo ./deploy/deploy.sh <tag>` directly on the server) |
-| Roll back | GitHub Actions → `cd-prod.yml` → **Run workflow** → enter the previous tag/sha (or the same `deploy/deploy.sh <tag>` command directly on the server) — under 5 minutes either way |
-| See logs | `docker compose logs api --tail 100 -f` |
-| Backup now | `sudo /opt/finzorr/backup.sh` (nightly automatic at 02:10) |
-| Restore drill | `gunzip -c backups/<file>.sql.gz \| docker compose exec -T postgres psql -U finzorr finzorr` — practice once BEFORE you need it |
+| Deploy a new version | Push to `main` → approve the `production` Environment gate in the GitHub Actions run. **Verify the self-hosted runner is actually up first** (§4.5) — a queued deploy job with no runner never errors, it just never runs. If the runner is down, use the manual path in §10 instead of waiting |
+| Roll back | GitHub Actions → `cd-prod.yml` → **Run workflow** → enter the previous tag/sha (needs the runner up too), or `cd /opt/finzorr && sudo IMAGE_TAG=<previous-tag> ./deploy/deploy.sh <previous-tag>` directly on the server if that tag was already pulled/built there |
+| See logs | `docker compose logs api --tail 100 -f` (needs `IMAGE_TAG=<anything>` set first if not already exported — the compose file requires it just to parse, even for `logs`) |
+| Backup now | **Not automated — `deploy/backup.sh` doesn't exist yet (§3).** Manual dump in the meantime: `docker compose exec -T postgres pg_dump -U finzorr finzorr \| gzip > /opt/finzorr/manual-backup-$(date +%Y%m%d).sql.gz`. Building the real nightly-cron version is a real open TODO, not a "nice to have" — there is currently no recovery path from data loss on this server beyond whatever you dump by hand |
+| Restore drill | `gunzip -c <backup-file>.sql.gz \| docker compose exec -T postgres psql -U finzorr finzorr` — practice once BEFORE you need it |
 | Rotate a key | Edit `/opt/finzorr/prod.env`, then `docker compose up -d api`. NOTE: rotating `SESSION_SECRET` logs every user out |
 | Enable LangSmith in prod | Set `LANGSMITH_TRACING=true` + the API key in prod.env, restart api — remember prompts then leave the server |
 | Daily drift watch | Add to the VM's cron: `30 7 * * * cd /opt/finzorr && docker compose run --rm api python scripts/drift_watch.py >> /opt/finzorr/backups/drift.log 2>&1` — alerts if any quality eval regresses |
 | Live trace-health watch | Add to the VM's cron (only meaningful once `LANGSMITH_TRACING=true` in prod.env): `0 */6 * * * cd /opt/finzorr && docker compose run --rm api python scripts/trace_health_watch.py >> /opt/finzorr/backups/trace-health.log 2>&1` — alerts on live `degraded`/`guard:suspicious` tag rate over the trailing window; skips cleanly (exit 0) if tracing is off |
 | Uptime alerts | uptimerobot.com (free) → HTTP monitor on `https://api.finzorr.ai/healthz` → email alert |
 | Free-tier pressure | Watch for `ai.budget.exceeded` in logs — the chain absorbs it; recurring daily = time to consider Groq's paid tier |
+| Runner health check | `gh api repos/<owner>/<repo>/actions/runners --jq '.total_count'` — 0 means every future push-triggered deploy will queue and never run until fixed (§4.5, §9.7) |
+| Docker disk cleanup | Build cache and superseded images accumulate on BOTH the server and any machine that builds images locally (this project hit 46GB reclaimed from local dev machine cache alone — see §9.9). Periodically: `docker system df` to check, then `docker container prune -f && docker image prune -af && docker builder prune -af` when reclaimable space is large. **Caution**: `docker container prune` removes ALL stopped containers including ones you meant to keep — check `docker ps -a` first if anything matters |
 
 ---
 
@@ -311,7 +420,264 @@ Run through together once everything above is done:
    fundamentals seed; fallback plan ready if blocked.
 2. **Free-tier limits** — absorbed by the budget chain; only matters at
    real scale.
-3. **One VM = one point of failure** — mitigated by nightly backups and the
-   <5-minute rollback; a second VM/UAT comes later if the site earns it.
+3. **One VM = one point of failure, and there is currently no automated
+   backup** — the <5-minute rollback (§6) only helps for a bad *code*
+   deploy; it does nothing for data loss (disk failure, accidental
+   `DROP`, etc.). `deploy/backup.sh` was planned (§3) but never built.
+   This is a real, currently-open gap, not a mitigated risk — treat
+   building it as a near-term priority, not a someday item.
 4. **Cloudflare Pages preview URLs cannot call the prod API** (different
    site → CORS/cookies) — by design; previews are for eyeballing UI only.
+5. **The self-hosted runner is a silent single point of failure for
+   automated deploys** — if its systemd service stops for any reason, the
+   `cd-prod.yml` deploy job queues forever with no error surfaced anywhere
+   (§4.5, §9.7). Verify it's up before assuming a push will reach
+   production; §10 is the fallback when it isn't.
+6. **Local build-cache/image bloat can silently fill a machine's disk** —
+   both the server and any local dev machine that builds this project's
+   Docker images will accumulate build cache and superseded image layers
+   over time (this project hit 46GB reclaimable on a local dev machine
+   alone, which caused an unrelated local Postgres container to crash-loop
+   from disk exhaustion mid-session — see §9.9). Not fatal, but worth
+   periodic `docker system df` checks (§6).
+
+---
+
+## 9. Incidents actually hit in production, and their fixes
+
+Every item here happened for real, not as a hypothetical risk review. Kept
+in full because the pattern (not just the specific fix) generalizes to any
+new agent built on this same architecture — several of these are the kind
+of mistake that's easy to repeat on a fresh server if you don't know to
+look for it.
+
+### 9.1 Disk exhaustion on the OVH server during initial setup
+Docker's build cache and layered images filled the server's disk during
+early setup/iteration, taking Postgres down with it (a database that can't
+write WAL is not a "slow" database, it's a stopped one). Fixed by
+reclaiming space (`docker system df` to see it, `docker builder prune -af`
++ `docker image prune -af` to clear it — same commands as §6's Docker disk
+cleanup row). **Lesson**: a fresh VM's disk is usually smaller than you
+expect relative to how much Docker churns through it while you're actively
+iterating on a Dockerfile — check `df -h` and `docker system df` early and
+often during initial bring-up, not just after something breaks.
+
+### 9.2 Missing `EMBED_OLLAMA_URL`/`OLLAMA_URL` — corpus/fundamentals seeding failed
+`prod.env` didn't set these two vars in an early version of `vm-bootstrap.sh`.
+The `api` container defaulted to `localhost:11434` for the embedder, which
+*inside its own network namespace means itself*, not the `ollama`
+container — "All connection attempts failed," not an obviously-networking
+error message. Fixed in `vm-bootstrap.sh`'s `prod.env` template (both vars
+now written unconditionally); `deploy/recover-embed-url.sh` exists for any
+server that was bootstrapped before the fix. **Lesson**: in Docker Compose,
+service-to-service calls use the *service name* as hostname
+(`http://ollama:11434`), never `localhost` — an env var that defaults to
+`localhost` for a same-machine-but-different-container dependency is a
+guaranteed footgun the first time it's actually exercised in a container,
+even though it works fine when running the same code natively on a laptop.
+
+### 9.3 Checkpointer cross-worker deadlock — chat silently hung on "Thinking"
+With `--workers 2`, both uvicorn worker *processes* raced to lazily run
+`CREATE INDEX CONCURRENTLY IF NOT EXISTS checkpoints_thread_id_idx` on
+first request. Postgres serialized the two attempts, and any other
+concurrently-open transaction on the same table (e.g. an unrelated
+`/chat/sessions` request landing on the same worker) blocked the
+`CONCURRENTLY` build from ever finishing — every subsequent chat turn hung
+forever waiting on the same lock, with no error, no timeout, no log line
+pointing at the cause. Two compounding root causes, both fixed:
+1. An in-process `asyncio.Lock()` was being used to guard the setup —
+   `--workers 2` means two separate OS *processes*, and an `asyncio.Lock`
+   provides zero cross-process safety. Each worker had its own,
+   independent lock that never contended with the other.
+2. `CREATE INDEX CONCURRENTLY` cannot run inside a transaction block at
+   all (a hard Postgres restriction) — the connection pool needed
+   `autocommit=True` explicitly, which it didn't have.
+
+Fixed by moving index setup into a genuinely one-off, single-process step
+(`app/orchestration/setup_checkpointer.py`, run once via `deploy.sh`/
+`vm-bootstrap.sh` BEFORE the api workers start, using an
+`AsyncConnectionPool` with `autocommit=True`) instead of each worker doing
+it lazily on first request. `deploy/recover-checkpointer-race.sh` recovers
+a server already stuck in this state: terminates the stuck backends, drops
+the half-built (invalid) index, re-runs setup single-process, restarts.
+**Lesson**: `--workers N` in uvicorn/gunicorn means N separate processes,
+not threads — any "run this exactly once" setup logic needs process-safe
+coordination (a dedicated one-off step before workers start, or a
+DB-level advisory lock), never an in-process primitive like `asyncio.Lock`
+or a plain Python global.
+
+### 9.4 Non-root container couldn't write to `/app` — broke uploads and yfinance's cache
+`WORKDIR /app` creates that directory as `root` BEFORE the subsequent
+`COPY --chown=app:app /app /app` runs — and `--chown` on `COPY` only
+affects the files it copies IN, not the pre-existing parent directory
+itself. Net effect: `/app` stayed root-owned (mode 755, no write bit for
+`app`) even after the chowned copy landed inside it. The `app` user could
+read every existing file but couldn't create NEW ones — which is exactly
+what a file upload or yfinance's on-disk cookie cache needs to do. Fixed
+with an explicit `RUN chown app:app /app && mkdir -p /app/storage/uploads
+&& chown -R app:app /app/storage` step after the `COPY`. **Lesson**: in a
+multi-stage Dockerfile with a non-root final user, `--chown` on `COPY`
+only ever fixes what that COPY brings in — any directory that existed
+before the copy (including ones `WORKDIR` silently creates) needs its own
+explicit `chown`, checked by actually testing a write as the runtime user,
+not just confirming the container starts.
+
+### 9.5 `deploy.sh` failed against a local-only bootstrap image tag
+`vm-bootstrap.sh`'s first-ever image build is local
+(`docker build -t <image>:bootstrap backend/`) and deliberately never
+pushed to GHCR — there's nothing to push to yet on a fresh server.
+`deploy.sh`'s first step is `docker compose pull api`, which fails (or
+silently does nothing useful) against a tag that only exists locally.
+Fixed by extracting the shared health-wait logic into its own
+`deploy/wait-healthy.sh`, so bootstrap-time bring-up can go straight to
+`docker compose up -d` + `wait-healthy.sh` without needing `deploy.sh`'s
+pull step at all. **Lesson**: "day-0 bring-up" and "day-2 redeploy" are
+genuinely different operations even though they look similar (both end
+with "the container is running and healthy") — day-0 has no registry
+image to pull yet; conflating the two into one script either breaks day-0
+or adds an awkward conditional branch. Splitting the shared part
+(health-wait) out was cleaner than either.
+
+### 9.6 GitHub Actions build silently broke for BOTH real production fixes in a row
+`cd-prod.yml`'s `build-and-push` job used `cache-to: type=gha,mode=max`,
+which requires the `docker-container` buildx driver — but the job never
+called `docker/setup-buildx-action`, so it ran on the default plain
+`docker` driver, which doesn't support that cache backend at all:
+`"failed to build: Cache export is not supported for the docker driver."`
+This had apparently been broken for a while (a pre-existing, unrelated
+bug — not caused by either fix it blocked) and simply never got exercised
+until two real deploys needed it back-to-back. Fixed by adding
+`docker/setup-buildx-action@v3` before the login/build steps. **Lesson**:
+a CD pipeline step that only runs on `push` to `main` doesn't get
+exercised nearly as often as CI (which runs on every PR) — a latent break
+here can sit undetected for a long time. If a deploy pipeline hasn't
+actually shipped anything in a while, don't assume it still works;
+verify the build step in isolation before relying on it for something
+time-sensitive.
+
+### 9.7 Self-hosted runner silently stopped registering — deploys queued forever
+Discovered mid-session: `gh api repos/<owner>/<repo>/actions/runners` returned
+`"total_count": 0` — no runner registered at all, despite `vm-bootstrap.sh`
+having installed and started it as a systemd service at initial launch.
+Root cause not fully diagnosed remotely (no SSH access from the assisting
+session by design — see §4.5's rationale) — plausible causes include the
+systemd service crashing without restarting, a server reboot where the
+service didn't persist, or the runner's registration token/session
+expiring. The queued `cd-prod.yml` deploy job showed no error of any
+kind — GitHub Actions does not surface "no runner available" as a failure,
+it just waits, indefinitely, with the job stuck at `status: "queued"`.
+**Not yet fixed at the infrastructure level** (would need direct server
+access) — worked around via the manual deploy path (§10) instead.
+**Lesson**: a self-hosted runner needs its OWN monitoring — nothing in
+GitHub's UI proactively tells you it's down, a queued job just looks like
+"still building" if you don't know to check runner count specifically.
+Add a periodic health check (even a simple cron hitting
+`gh api .../actions/runners` and alerting on `total_count: 0`) rather than
+discovering it's down only when a deploy is time-sensitive.
+
+### 9.8 Missing persistent volume for uploads
+The `api` service in `docker-compose.prod.yml` had no volume for
+`/app/storage/uploads` — every container restart lost all uploaded files
+while their Qdrant vectors (and RAG citations pointing at them) survived
+untouched, silently producing a permanently broken reference. Fixed by
+adding a `finzorr_uploads` named volume, verified locally before shipping
+by building the actual production image, writing a file as the non-root
+container user into the volume, then reading it back from a **fresh**
+container instance on the same volume to confirm real persistence (not
+just "the mount didn't error"). **Lesson**: any container path that's
+supposed to survive a restart needs an explicit named volume — this is
+easy to miss for a path that "just works" during development (where the
+process never actually restarts) and only surfaces the first time a real
+deploy cycle happens against it.
+
+### 9.9 Local dev machine's own Docker bloat crashed an unrelated local Postgres container
+Not a production incident, but real and worth recording: while
+investigating a stuck Postgres container on a local development machine
+(mid-session, unrelated to any deploy), the actual error was `PANIC: could
+not write to file "pg_logical/replorigin_checkpoint.tmp": No space left on
+device` — but the HOST disk had 194GB free. The real constraint was
+Docker Desktop's internal VM disk, separately capped from the host and
+filled by accumulated build cache (13GB+) and superseded images (16GB+)
+from repeated local image builds during iterative development. Fixed with
+`docker container prune -f && docker image prune -af && docker builder
+prune -af`, reclaiming ~46GB, after which the container restarted cleanly
+via Postgres's own automatic WAL recovery. **Lesson**: "no space left on
+device" inside a container does NOT mean the host is full — Docker
+Desktop (and some Docker Engine configurations) impose their own separate
+storage ceiling; check `docker system df`, not just `df -h` on the host,
+when a containerized service reports disk-full.
+
+### 9.10 Google OAuth `origin_mismatch` — twice, for two different origins
+"Sign in with Google" failed with `origin_mismatch` on launch — fixed by
+adding `https://finzorr.ai` to the OAuth client's Authorized JavaScript
+Origins in Google Cloud Console. It then failed AGAIN the same way for
+`https://www.finzorr.ai` specifically, since that's a genuinely different
+origin from Google's perspective even though the app treats them as the
+same site (§3's multi-origin CORS fix). Both had to be added as separate
+entries. **Lesson**: a Google OAuth client's Authorized JavaScript Origins
+list needs EVERY exact origin the login button will ever be served from —
+apex domain and `www.` subdomain are not interchangeable to Google's
+origin check even if your own CORS/cookie handling treats them as
+equivalent; add both explicitly, don't assume one covers the other.
+
+---
+
+## 10. Emergency manual deploy (when the self-hosted runner is unavailable)
+
+Use this when §4.5's runner health check returns `0` and a fix needs to
+reach production before the runner is restored. This is exactly the
+procedure used in this project's own history when the runner went down
+mid-session. Run directly on the server (`ssh` in — this is the one
+legitimate use of direct server access outside the runner's own
+outbound-poll model, since there is no other path when the runner itself
+is what's broken):
+
+```bash
+cd /opt/finzorr
+git pull
+docker build -t ghcr.io/<owner>/<image-name>:bootstrap backend/
+export IMAGE_TAG=bootstrap
+docker compose -f deploy/docker-compose.prod.yml run --rm api alembic upgrade head
+docker compose -f deploy/docker-compose.prod.yml run --rm api python -m app.orchestration.setup_checkpointer
+docker compose -f deploy/docker-compose.prod.yml up -d api
+./deploy/wait-healthy.sh finzorr-api 300
+```
+
+Why each step, and why it differs from the normal `deploy.sh` path:
+- `git pull` — pulls the already-merged, already-CI-passed code from
+  `main` directly, since there's no GHCR image to pull instead (that's
+  what's broken).
+- `docker build ... :bootstrap` — builds the image LOCALLY on the server,
+  reusing the same `:bootstrap` tag `vm-bootstrap.sh` used at initial
+  launch. This is a deliberate, permanent local-only tag for exactly this
+  scenario, not a one-off name to remember.
+- `export IMAGE_TAG=bootstrap` — every `docker compose` invocation against
+  `docker-compose.prod.yml` needs this set, even read-only ones like
+  `logs`, because the compose file's `image:` line uses
+  `${IMAGE_TAG:?set IMAGE_TAG}` and fails to parse at all without it.
+- **Deliberately NOT `deploy.sh`** — `deploy.sh`'s first step is `docker
+  compose pull api`, which fails against a tag that only exists locally
+  and was never pushed to GHCR (§9.5). Run its remaining steps (migrate,
+  checkpointer setup, restart, health-wait) directly instead.
+- `alembic upgrade head` — even in an emergency, don't skip migrations;
+  running them explicitly here (rather than assuming they're a no-op)
+  costs nothing when there's nothing pending and prevents a real gap when
+  there is.
+- The checkpointer setup step is idempotent (safe to re-run) and cheap —
+  always include it rather than trying to determine whether it's "really"
+  needed this time.
+
+After this succeeds: verify independently, don't just trust the script's
+own exit code — hit `/healthz` and `/readyz` from outside the server
+(`curl https://api.finzorr.ai/healthz`), and for any code change that
+touches something specific (a new dependency, a new env var, a new
+volume), verify THAT specific thing too — e.g. `docker exec finzorr-api
+tesseract --version` after a change that added an OCR dependency, or
+`docker inspect finzorr-api --format '{{range .Mounts}}{{.Name}} ->
+{{.Destination}}{{"\n"}}{{end}}'` after a volume-mount change. A green
+health check confirms the process started; it does not confirm the
+specific thing you just shipped actually works.
+
+Once the runner is restored, no further action is needed to "reconcile"
+anything — the next normal push to `main` picks up from wherever `main`
+is, exactly as if the manual deploy had been the runner's own doing.
