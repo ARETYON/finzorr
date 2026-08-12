@@ -27,7 +27,8 @@ dump.rdb
 .idea/
 .vscode/
 
-# Word/doc build artifacts stay out of git (the .md files are the source)
+# Word/doc build artifacts stay out of git (the .md files are the source;
+# regenerate with: pandoc <name>.md -o <name>.docx --standalone -f gfm)
 PROJECT_PLAN.docx
 ~$*
 DEPLOYMENT_PLAN.docx
