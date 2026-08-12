@@ -19,6 +19,8 @@ function load(): Persisted {
 
 interface SettingsState extends Persisted {
   setAutoRead: (v: boolean) => void
+  speakingMessageId: string | null
+  setSpeaking: (id: string | null) => void
 }
 
 export const useSettingsStore = create<SettingsState>((set) => ({
@@ -27,16 +29,27 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     set({ autoRead })
     localStorage.setItem(KEY, JSON.stringify({ autoRead }))
   },
+  speakingMessageId: null,
+  setSpeaking: (speakingMessageId: string | null) => set({ speakingMessageId }),
 }))
 
-export function speak(text: string): void {
+export function speak(text: string, messageId: string): void {
   if (!('speechSynthesis' in window)) return
   window.speechSynthesis.cancel()
   const utterance = new SpeechSynthesisUtterance(text.slice(0, 2000))
   utterance.rate = 1.05
+  const clearIfCurrent = () => {
+    if (useSettingsStore.getState().speakingMessageId === messageId) {
+      useSettingsStore.getState().setSpeaking(null)
+    }
+  }
+  utterance.onend = clearIfCurrent
+  utterance.onerror = clearIfCurrent
+  useSettingsStore.getState().setSpeaking(messageId)
   window.speechSynthesis.speak(utterance)
 }
 
 export function stopSpeaking(): void {
   if ('speechSynthesis' in window) window.speechSynthesis.cancel()
+  useSettingsStore.getState().setSpeaking(null)
 }

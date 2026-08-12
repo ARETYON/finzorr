@@ -1,10 +1,10 @@
-import { Pencil, RefreshCw, ThumbsDown, ThumbsUp, Volume2 } from 'lucide-react'
+import { Pencil, RefreshCw, ThumbsDown, ThumbsUp, Volume2, VolumeX } from 'lucide-react'
 import clsx from 'clsx'
 import ReactMarkdown from 'react-markdown'
 import toast from 'react-hot-toast'
 import { sendFeedback } from '../../api/chat'
 import { useChatStore } from '../../store/chatStore'
-import { speak } from '../../store/settingsStore'
+import { speak, stopSpeaking, useSettingsStore } from '../../store/settingsStore'
 import type { ChatMessage } from '../../types'
 import Citations from './Citations'
 import PriceChart from './PriceChart'
@@ -18,7 +18,13 @@ interface Props {
 
 export default function MessageBubble({ message, onRegenerate, onEdit }: Props) {
   const setMessages = useChatStore((s) => s.setMessages)
+  const isSpeaking = useSettingsStore((s) => s.speakingMessageId === message.id)
   const isUser = message.role === 'user'
+
+  const toggleSpeak = () => {
+    if (isSpeaking) stopSpeaking()
+    else speak(message.content, message.id)
+  }
 
   const rate = async (rating: 1 | -1) => {
     try {
@@ -84,11 +90,11 @@ export default function MessageBubble({ message, onRegenerate, onEdit }: Props) 
               <ThumbsDown size={13} />
             </button>
             <button
-              onClick={() => speak(message.content)}
-              className="hover:text-accent-strong"
-              aria-label="Read aloud"
+              onClick={toggleSpeak}
+              className={clsx('hover:text-accent-strong', isSpeaking && 'text-accent-strong')}
+              aria-label={isSpeaking ? 'Stop reading aloud' : 'Read aloud'}
             >
-              <Volume2 size={13} />
+              {isSpeaking ? <VolumeX size={13} /> : <Volume2 size={13} />}
             </button>
             {onRegenerate && (
               <button

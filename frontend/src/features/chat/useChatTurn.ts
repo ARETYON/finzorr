@@ -95,7 +95,7 @@ export function useChatTurn() {
           ])
           void useChatStore.getState().loadSessions() // pick up auto-titles
           setWatchlistRefreshKey((k) => k + 1) // reflect chat-driven watchlist edits
-          if (useSettingsStore.getState().autoRead) speak(frame.message)
+          if (useSettingsStore.getState().autoRead) speak(frame.message, frame.message_id)
           {
             const doc = extractArtifact(frame.message)
             if (doc) setArtifact(doc)
