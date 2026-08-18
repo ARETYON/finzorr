@@ -50,7 +50,12 @@ async def test_search_filter_carries_exactly_the_passed_tenants(
 async def test_rag_node_requests_only_glossary_and_own_tenant(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from app.core.config import settings as app_settings
     from app.specialists import rag as rag_mod
+
+    # CRAG off: these predate the grader and test other seams; the grader
+    # would otherwise make an unmocked LLM call (see test_crag.py for CRAG)
+    monkeypatch.setattr(app_settings, "CRAG_ENABLED", False)
 
     seen_tenants: list[list[str]] = []
 
@@ -85,7 +90,12 @@ async def test_debug_pseudo_user_gets_no_private_tenant(
 ) -> None:
     """The dev /debug route runs nodes with user_id='debug' — it must search
     the glossary ONLY, never a private tenant named 'debug'."""
+    from app.core.config import settings as app_settings
     from app.specialists import rag as rag_mod
+
+    # CRAG off: these predate the grader and test other seams; the grader
+    # would otherwise make an unmocked LLM call (see test_crag.py for CRAG)
+    monkeypatch.setattr(app_settings, "CRAG_ENABLED", False)
 
     seen: list[list[str]] = []
 
@@ -116,8 +126,12 @@ def _hit(score: float, tenant: str, doc_id: str = "", title: str = "doc.pdf") ->
     from app.infrastructure.vector_store import Hit
 
     return Hit(
-        score=score, text="excerpt text", title=title, locator="p.1",
-        tenant=tenant, doc_id=doc_id,
+        score=score,
+        text="excerpt text",
+        title=title,
+        locator="p.1",
+        tenant=tenant,
+        doc_id=doc_id,
     )
 
 
@@ -136,9 +150,7 @@ async def test_glossary_only_hits_never_touch_db_or_storage(
             raise AssertionError("must not be constructed")
 
     monkeypatch.setattr("app.infrastructure.db.session.SessionLocal", _Boom())
-    blocks, expanded = await rag_mod._expand_best_small_doc(
-        "user-1", [_hit(0.9, "glossary")]
-    )
+    blocks, expanded = await rag_mod._expand_best_small_doc("user-1", [_hit(0.9, "glossary")])
     assert expanded is False
     assert touched["db"] is False
     assert blocks == [("doc.pdf", "excerpt text")]
@@ -376,15 +388,15 @@ async def test_multiple_hits_from_same_doc_expand_without_intent_words(
 
     monkeypatch.setattr("app.infrastructure.db.session.SessionLocal", lambda: _Session())
     monkeypatch.setattr("app.documents.storage.get_storage", lambda: _Storage())
-    monkeypatch.setattr(
-        "app.documents.ingest.extract_any", lambda _f, _d: [("p.1", "full text")]
-    )
+    monkeypatch.setattr("app.documents.ingest.extract_any", lambda _f, _d: [("p.1", "full text")])
     hits = [
         _hit(0.9, user_id, doc_id, "notes.pdf"),
         _hit(0.7, user_id, doc_id, "notes.pdf"),  # second hit, SAME doc
     ]
     blocks, expanded = await rag_mod._expand_best_small_doc(
-        user_id, hits, "what does it say about margins?"  # no intent phrase
+        user_id,
+        hits,
+        "what does it say about margins?",  # no intent phrase
     )
     assert expanded is True
 
@@ -424,8 +436,13 @@ async def test_rag_node_tags_invalid_citation_without_mangling_answer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from app.core import trace as trace_mod
+    from app.core.config import settings as app_settings
     from app.infrastructure.vector_store import Hit
     from app.specialists import rag as rag_mod
+
+    # CRAG off: these predate the grader and test other seams; the grader
+    # would otherwise make an unmocked LLM call (see test_crag.py for CRAG)
+    monkeypatch.setattr(app_settings, "CRAG_ENABLED", False)
 
     tagged: list[str] = []
     monkeypatch.setattr(trace_mod, "tag", lambda *t: tagged.extend(t))
@@ -455,8 +472,13 @@ async def test_rag_node_tags_invalid_citation_without_mangling_answer(
 
 
 async def test_rag_node_tags_no_citations_despite_hits(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.core.config import settings as app_settings
     from app.infrastructure.vector_store import Hit
     from app.specialists import rag as rag_mod
+
+    # CRAG off: these predate the grader and test other seams; the grader
+    # would otherwise make an unmocked LLM call (see test_crag.py for CRAG)
+    monkeypatch.setattr(app_settings, "CRAG_ENABLED", False)
 
     tagged: list[str] = []
     monkeypatch.setattr(rag_mod, "tag", lambda *t: tagged.extend(t))
@@ -483,8 +505,13 @@ async def test_rag_node_tags_no_citations_despite_hits(monkeypatch: pytest.Monke
 async def test_rag_node_no_citation_tag_when_answer_cites_properly(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from app.core.config import settings as app_settings
     from app.infrastructure.vector_store import Hit
     from app.specialists import rag as rag_mod
+
+    # CRAG off: these predate the grader and test other seams; the grader
+    # would otherwise make an unmocked LLM call (see test_crag.py for CRAG)
+    monkeypatch.setattr(app_settings, "CRAG_ENABLED", False)
 
     tagged: list[str] = []
     monkeypatch.setattr(rag_mod, "tag", lambda *t: tagged.extend(t))
@@ -548,8 +575,13 @@ async def test_rag_node_flags_document_embedded_injection_attempt(
     stays inside wrap_untrusted's fence in the prompt actually sent to the
     model, proving the two defenses compose (fencing neutralizes it,
     tagging makes the attempt visible)."""
+    from app.core.config import settings as app_settings
     from app.infrastructure.vector_store import Hit
     from app.specialists import rag as rag_mod
+
+    # CRAG off: this test isolates the injection defenses (fence + tag); the
+    # grader would otherwise make an unmocked LLM call and may drop the chunk
+    monkeypatch.setattr(app_settings, "CRAG_ENABLED", False)
 
     tagged: list[str] = []
     monkeypatch.setattr(rag_mod, "tag", lambda *t: tagged.extend(t))
@@ -584,15 +616,27 @@ async def test_rag_node_flags_document_embedded_injection_attempt(
 async def test_rag_node_benign_document_never_tags_injection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from app.core.config import settings as app_settings
     from app.infrastructure.vector_store import Hit
     from app.specialists import rag as rag_mod
+
+    # CRAG off: these predate the grader and test other seams; the grader
+    # would otherwise make an unmocked LLM call (see test_crag.py for CRAG)
+    monkeypatch.setattr(app_settings, "CRAG_ENABLED", False)
 
     tagged: list[str] = []
     monkeypatch.setattr(rag_mod, "tag", lambda *t: tagged.extend(t))
 
     async def fake_search(_v: Any, **_k: Any) -> list[Hit]:
-        return [Hit(score=0.9, text="Revenue grew 12% this quarter.", title="doc.pdf",
-                     locator="p.1", tenant="u1")]
+        return [
+            Hit(
+                score=0.9,
+                text="Revenue grew 12% this quarter.",
+                title="doc.pdf",
+                locator="p.1",
+                tenant="u1",
+            )
+        ]
 
     async def fake_embed(_q: str) -> list[float]:
         return [0.0] * 3

@@ -9,9 +9,12 @@ import asyncio
 import re
 from typing import Any
 
+from langsmith import traceable
+
+from app.core.config import settings
 from app.core.logging import log
 from app.core.prompt_registry import AgentPrompt, register, render_agent_prompt
-from app.core.trace import tag
+from app.core.trace import mark, tag
 from app.core.untrusted import wrap_untrusted
 from app.domain.citations import find_invalid_markers
 from app.domain.guard import screen_floor, screen_output
@@ -20,6 +23,7 @@ from app.infrastructure.llm.completion import stream
 from app.infrastructure.vector_store import GLOSSARY_TENANT, Hit, search
 from app.orchestration.state import AssistantState
 from app.orchestration.streaming import emit_frame
+from app.rag.crag import corrective_search, grade_blocks
 from app.rag.embeddings import embed_query
 from app.specialists.base import Specialist
 from app.specialists.common import step_context, task_for, with_instructions
@@ -45,8 +49,8 @@ register(
             "- If the excerpts don't contain the answer, say so plainly first, then "
             "you may add clearly-labeled general knowledge under 'From general "
             "knowledge:'.\n"
-            "- For finance topics end with: \"This is general information, not "
-            "investment advice.\"\n\n"
+            '- For finance topics end with: "This is general information, not '
+            'investment advice."\n\n'
             "EXCERPTS:\n{excerpts}"
         ),
     )
@@ -96,6 +100,14 @@ _WHOLE_DOC_INTENT = re.compile(
 )
 
 
+@traceable(
+    run_type="chain",
+    name="rag.expand_small_doc",
+    process_inputs=lambda inputs: {
+        "hits": len(inputs.get("hits", [])),
+        "query": str(inputs.get("query", ""))[:200],
+    },
+)
 async def _expand_best_small_doc(
     user_id: str, hits: list[Hit], query: str = ""
 ) -> tuple[list[Block], bool]:
@@ -182,8 +194,50 @@ async def rag_node(state: AssistantState) -> AssistantState:
             emit_frame({"type": "token", "delta": t})
 
     expanded = False
+    web_fallback = False
     blocks: list[Block] = []
-    if not hits:
+    if hits:
+        blocks, expanded = await _expand_best_small_doc(user_id, hits, task_for(state))
+        # read-time doc-injection screening: distinct from wrap_untrusted's
+        # fencing (which neutralizes an embedded instruction either way) —
+        # this adds VISIBILITY that a retrieved document attempted one.
+        # Observe-only, same never-block contract as the rest of the guard.
+        # Runs BEFORE CRAG on the original retrieved blocks: an injection
+        # attempt must be flagged even when the grader drops that chunk.
+        if any(screen_floor(text) == "suspicious" for _source, text in blocks):
+            tag("guard:doc_injection_suspected")
+        # CRAG knowledge correction (app/rag/crag.py): grade chunks against
+        # the question, drop irrelevant ones, fall back to web search when
+        # retrieval as a whole is judged wrong. Skipped for an expanded full
+        # doc — the user explicitly asked about that document. Grader failure
+        # keeps every chunk (today's behavior); correction is never a risk.
+        if settings.CRAG_ENABLED and not expanded:
+            graded = await grade_blocks(task_for(state), blocks)
+            if graded.grader_ok:
+                tag(f"crag:{graded.overall}")
+                if graded.dropped:
+                    mark(crag_dropped=graded.dropped)
+                if graded.overall == "incorrect":
+                    blocks = await corrective_search(graded.web_query or task_for(state))
+                    web_fallback = bool(blocks)
+                elif graded.overall == "ambiguous":
+                    web_blocks = await corrective_search(graded.web_query or task_for(state))
+                    blocks = graded.kept + web_blocks
+                    web_fallback = bool(web_blocks)
+                else:
+                    blocks = graded.kept
+            else:
+                tag("crag:grader_failed")
+    # one-glance pipeline summary on the rag node's own LangSmith run:
+    # how many chunks came back, how many survived correction, and which
+    # special paths (full-doc expansion / web fallback) fired this turn
+    mark(
+        rag_hits=len(hits),
+        rag_blocks_final=len(blocks),
+        rag_expanded=expanded,
+        rag_web_fallback=web_fallback,
+    )
+    if not blocks:
         system = SystemMessage(
             content=(
                 "The knowledge base returned nothing relevant. Say you couldn't find "
@@ -192,18 +246,17 @@ async def rag_node(state: AssistantState) -> AssistantState:
             )
         )
     else:
-        blocks, expanded = await _expand_best_small_doc(user_id, hits, task_for(state))
-        # read-time doc-injection screening: distinct from wrap_untrusted's
-        # fencing (which neutralizes an embedded instruction either way) —
-        # this adds VISIBILITY that a retrieved document attempted one.
-        # Observe-only, same never-block contract as the rest of the guard.
-        if any(screen_floor(text) == "suspicious" for _source, text in blocks):
-            tag("guard:doc_injection_suspected")
         prompt = render_agent_prompt("rag_system", excerpts=_format_excerpts(blocks))
         if expanded:
             prompt += (
                 "\n\nNOTE: one document above is included IN FULL (every "
                 "section) — you may summarize or answer about it end-to-end."
+            )
+        if web_fallback:
+            prompt += (
+                "\n\nNOTE: excerpts labeled 'web ·' come from a live web "
+                "search because the knowledge base had nothing relevant "
+                "enough — cite them like any other excerpt."
             )
         system = SystemMessage(content=with_instructions(prompt, state))
     try:
@@ -229,7 +282,8 @@ async def rag_node(state: AssistantState) -> AssistantState:
             "final_text": done.text,
             "route": "rag",
             "citations": citations,
-            "sources": [
+            "sources": (["web search"] if web_fallback else [])
+            + [
                 "finzorr glossary" if h.tenant == GLOSSARY_TENANT else "your documents"
                 for h in hits[:1]
             ],
