@@ -29,7 +29,12 @@ export default function Chat() {
   const [hasShareLink, setHasShareLink] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const lastUserMsgRef = useRef('')
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const scrollerRef = useRef<HTMLDivElement>(null)
+  // stick-to-bottom: auto-scroll only while the user is already at the
+  // bottom; scrolling up to re-read pauses following until they return
+  const stickToBottomRef = useRef(true)
+  const scrollRafRef = useRef(0)
+  const prevMsgCountRef = useRef(0)
 
   useEffect(() => {
     void loadSessions()
@@ -49,8 +54,25 @@ export default function Chat() {
     }
   }, [activeSessionId, setApproval])
 
+  const onScrollerScroll = () => {
+    const el = scrollerRef.current
+    if (!el) return
+    stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+  }
+
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    // smooth only when a NEW bubble appears; token growth scrolls instantly.
+    // Restarting a smooth animation per token is what made the UI lurch on
+    // long streamed answers, so streaming updates use rAF + instant jumps.
+    const isNewMessage = messages.length !== prevMsgCountRef.current
+    prevMsgCountRef.current = messages.length
+    const el = scrollerRef.current
+    if (!el || !stickToBottomRef.current) return
+    cancelAnimationFrame(scrollRafRef.current)
+    scrollRafRef.current = requestAnimationFrame(() => {
+      el.scrollTo({ top: el.scrollHeight, behavior: isNewMessage ? 'smooth' : 'auto' })
+    })
+    return () => cancelAnimationFrame(scrollRafRef.current)
   }, [messages, thinking])
 
   const { connected, sendChat, cancel, sendApproval } = useChatSocket(onFrame)
@@ -59,6 +81,7 @@ export default function Chat() {
     let sessionId = activeSessionId
     if (!sessionId) sessionId = await newSession()
     lastUserMsgRef.current = text
+    stickToBottomRef.current = true // sending always snaps back to the bottom
     const shown = attachments?.length ? `${text} 🖼️` : text
     setMessages((prev) => [...prev, { id: `local-${Date.now()}`, role: 'user', content: shown }])
     sendChat(sessionId, text, attachments)
@@ -174,7 +197,7 @@ export default function Chat() {
             />
           </div>
         </header>
-        <div className="flex-1 overflow-y-auto px-4 py-4">
+        <div ref={scrollerRef} onScroll={onScrollerScroll} className="flex-1 overflow-y-auto px-4 py-4">
           {/* polite live region: screen readers announce streamed replies */}
           <div className="mx-auto max-w-3xl space-y-4" aria-live="polite" aria-busy={streaming}>
             {messages.length === 0 && !thinking && (
@@ -203,7 +226,6 @@ export default function Chat() {
                 </div>
               </div>
             )}
-            <div ref={bottomRef} />
           </div>
         </div>
         {approval && (

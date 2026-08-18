@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { Pencil, RefreshCw, ThumbsDown, ThumbsUp, Volume2, VolumeX } from 'lucide-react'
 import clsx from 'clsx'
 import ReactMarkdown from 'react-markdown'
@@ -16,7 +17,7 @@ interface Props {
   onEdit?: ((content: string) => void) | undefined
 }
 
-export default function MessageBubble({ message, onRegenerate, onEdit }: Props) {
+function MessageBubble({ message, onRegenerate, onEdit }: Props) {
   const setMessages = useChatStore((s) => s.setMessages)
   const isSpeaking = useSettingsStore((s) => s.speakingMessageId === message.id)
   const isUser = message.role === 'user'
@@ -111,3 +112,8 @@ export default function MessageBubble({ message, onRegenerate, onEdit }: Props) 
     </div>
   )
 }
+
+// During streaming the turn reducer replaces ONLY the last message object;
+// every finished bubble keeps its identity, so memo stops the whole history
+// from re-rendering its Markdown on every token — big answers reflow less.
+export default memo(MessageBubble)
