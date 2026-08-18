@@ -74,8 +74,8 @@ async def test_observe_only_graph_input_identical(
 
     async def fake_drive(
         _graph: Any, graph_input: Any, _config: Any, _sid: Any, _frames: Any,
-        *, origin: str = "chat", user_id: str = "", turn_id: str = "",
-        run_id: Any = None, extra_tags: list[str] | None = None,
+        *, origin: str = "chat", user_id: str = "", user_name: str = "",
+        turn_id: str = "", run_id: Any = None, extra_tags: list[str] | None = None,
     ) -> dict[str, Any]:
         captured.append(dict(graph_input))
         tags_seen.append(list(extra_tags or []))

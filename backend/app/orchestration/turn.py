@@ -224,7 +224,15 @@ async def run_turn(
     memories = await recall(
         str(user_id),
         user_msg,
-        langsmith_extra={"metadata": {"session_id": str(session_id), "turn_id": turn_id}},
+        langsmith_extra={
+            "metadata": {
+                "session_id": str(session_id),
+                "turn_id": turn_id,
+                "user_id": str(user_id),
+                "user_name": user_name,
+            },
+            "tags": [f"user:{user_name}"] if user_name else [],
+        },
     )
     if memories:
         # Recalled facts were LLM-extracted from past user text — they are
@@ -288,6 +296,7 @@ async def run_turn(
             on_frame,
             origin=origin,
             user_id=str(user_id),
+            user_name=user_name,
             turn_id=turn_id,
             run_id=root_run_id,
             extra_tags=["guard:suspicious"] if guard_verdict == "suspicious" else [],
@@ -298,7 +307,20 @@ async def run_turn(
         return payload
     log.info("turn.done", session_id=str(session_id), route=out.get("route"))
     spawn(
-        extract_and_store(str(user_id), user_msg, out.get("final_text", "")),
+        extract_and_store(
+            str(user_id),
+            user_msg,
+            out.get("final_text", ""),
+            langsmith_extra={
+                "metadata": {
+                    "session_id": str(session_id),
+                    "turn_id": turn_id,
+                    "user_id": str(user_id),
+                    "user_name": user_name,
+                },
+                "tags": [f"user:{user_name}"] if user_name else [],
+            },
+        ),
         name="memory.extract",
     )
     return _response_payload(session_id, out)
@@ -388,7 +410,15 @@ async def resume_turn(
 
     spawn(
         extract_and_store(
-            str(out.get("user_id", "")), parked_user_msg, out.get("final_text", "")
+            str(out.get("user_id", "")),
+            parked_user_msg,
+            out.get("final_text", ""),
+            langsmith_extra={
+                "metadata": {
+                    "session_id": str(session_id),
+                    "user_id": str(out.get("user_id", "")),
+                }
+            },
         ),
         name="memory.extract",
     )
@@ -404,6 +434,7 @@ async def _drive_graph(
     *,
     origin: str = "chat",
     user_id: str = "",
+    user_name: str = "",
     turn_id: str = "",
     run_id: uuid.UUID | None = None,
     extra_tags: list[str] | None = None,
@@ -418,8 +449,17 @@ async def _drive_graph(
     # origin tag separates human chat / scheduled / resumed traffic in
     # LangSmith; user_id + turn_id make traces joinable with structured logs
     metadata = {"session_id": str(session_id)}
+    tags = [settings.APP_ENV, origin, *(extra_tags or [])]
     if user_id:
         metadata["user_id"] = user_id
+    if user_name:
+        # display name (not email — deliberate PII line) so LangSmith traces
+        # are filterable/recognizable by WHO without a DB lookup per UUID.
+        # Duplicated as a `user:` tag because LangSmith's UI metadata-value
+        # filter widget generates a query its own backend 502s on — the tag
+        # filter widget is the one that reliably works.
+        metadata["user_name"] = user_name
+        tags.append(f"user:{user_name}")
     if turn_id:
         metadata["turn_id"] = turn_id
     run_config = {
@@ -427,7 +467,7 @@ async def _drive_graph(
         "recursion_limit": 50,
         "run_name": "assistant-turn",
         "metadata": metadata,
-        "tags": [settings.APP_ENV, origin, *(extra_tags or [])],
+        "tags": tags,
     }
     if run_id is not None:
         run_config["run_id"] = run_id  # honored by Pregel — the root trace id
