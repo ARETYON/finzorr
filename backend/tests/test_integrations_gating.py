@@ -2,6 +2,7 @@
 fundamentals-refresh failure isolation. No network anywhere."""
 
 import asyncio
+import uuid
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
@@ -10,10 +11,12 @@ from cryptography.fernet import InvalidToken
 
 import app.mcp_client.github_client as github_client
 from app.core.config import settings
+from app.core.request_context import user_context
 from app.infrastructure.llm.vision import _client_and_model, vision_available
 from app.integrations.google_connect import (
     SCOPES,
     _fernet,
+    _has_drive_scope,
     authorize_url,
     connectors_enabled,
     register_google_tools,
@@ -51,12 +54,49 @@ def test_register_google_tools_noop_when_disabled(monkeypatch: pytest.MonkeyPatc
     assert register_google_tools() == 0
 
 
-def test_register_google_tools_registers_two(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_register_google_tools_registers_four(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "GOOGLE_CLIENT_ID", "cid")
     monkeypatch.setattr(settings, "GOOGLE_CLIENT_SECRET", "sec")
-    assert register_google_tools() == 2
+    assert register_google_tools() == 4
     names = {t.name for t in all_tools()}
-    assert {"gmail_search", "calendar_upcoming_events"} <= names
+    assert {
+        "gmail_search",
+        "calendar_upcoming_events",
+        "drive_search_files",
+        "drive_read_file",
+    } <= names
+
+
+# ---------------------------------------------------------------- drive scope gating
+
+
+def test_has_drive_scope_detects_legacy_and_new_tokens() -> None:
+    legacy = (
+        "https://www.googleapis.com/auth/gmail.readonly "
+        "https://www.googleapis.com/auth/calendar.readonly"
+    )
+    assert _has_drive_scope(legacy) is False
+    assert _has_drive_scope(legacy + " https://www.googleapis.com/auth/drive.readonly") is True
+
+
+async def test_drive_search_asks_reconnect_on_legacy_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.integrations.google_connect as gc
+
+    async def legacy_scopes(user_id: Any) -> str:
+        return "https://www.googleapis.com/auth/gmail.readonly"
+
+    monkeypatch.setattr(gc, "_user_scopes", legacy_scopes)
+    with user_context(str(uuid.uuid4())):
+        result = await gc._drive_search({"query": "budget"})
+    assert result == gc._DRIVE_NOT_GRANTED
+
+
+async def test_drive_read_requires_file_id() -> None:
+    import app.integrations.google_connect as gc
+
+    assert await gc._drive_read({}) == "Error: 'file_id' is required."
 
 
 # ---------------------------------------------------------------- authorize_url

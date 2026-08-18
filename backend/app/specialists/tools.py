@@ -33,6 +33,7 @@ from app.specialists.common import step_context, task_for, with_instructions
 from app.specialists.general_chat import build_history
 from app.tools_registry import (
     market_tools,  # noqa: F401 — registers the family
+    news_tools,  # noqa: F401 — registers get_market_news
     portfolio_tools,  # noqa: F401 — registers analyze_portfolio
     web_tools,  # noqa: F401 — registers read_url
 )

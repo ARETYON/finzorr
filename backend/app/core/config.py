@@ -31,13 +31,18 @@ class Settings(BaseSettings):
     # --- LLM providers (free chain: groq -> gemini -> openrouter -> ollama) ---
     LLM_PROVIDER: str = "ollama"  # ollama | groq | gemini | openrouter | huggingface
     LLM_MODEL: str = "qwen2.5:14b-instruct"
-    LLM_FALLBACK_PROVIDER: str = ""  # optional one-bounded-retry target
+    # ollama as the fallback means a dead/renamed cloud model degrades to the
+    # local model instead of taking the whole chat down (see prod incident
+    # 2026-08-18: groq's and gemini's default models were both retired by
+    # their providers at the same time, and with no fallback configured the
+    # app had no third option)
+    LLM_FALLBACK_PROVIDER: str = "ollama"  # optional one-bounded-retry target
     SUPERVISOR_MODEL: str = ""  # small/fast model for routing; empty = LLM_MODEL
     OLLAMA_URL: str = "http://localhost:11434"
     GROQ_API_KEY: str = ""
-    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    GROQ_MODEL: str = "openai/gpt-oss-120b"
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-2.0-flash"
+    GEMINI_MODEL: str = "gemini-3.6-flash"
     OPENROUTER_API_KEY: str = ""
     OPENROUTER_MODEL: str = ""
     HF_TOKEN: str = ""
@@ -53,6 +58,12 @@ class Settings(BaseSettings):
     # MMR diversity balance for RAG retrieval (0=max diversity, 1=pure
     # relevance); the top-1 hit by raw score is always kept regardless
     RAG_MMR_LAMBDA: float = 0.5
+    # CRAG knowledge correction (app/rag/crag.py): grade retrieved chunks
+    # before generation, drop irrelevant ones, web-search fallback when
+    # retrieval as a whole is judged wrong. Grader failure degrades to
+    # keep-everything (today's behavior), so default-on is safe.
+    CRAG_ENABLED: bool = True
+    CRAG_TIMEOUT_S: float = 6.0
 
     # --- Auth ---
     GOOGLE_CLIENT_ID: str = ""
@@ -76,7 +87,7 @@ class Settings(BaseSettings):
     TURN_TIMEOUT_S: int = 300  # wall-clock ceiling for one assistant turn
     # Comma-separated tool names that require explicit user approval before
     # they execute (human-in-the-loop interrupt); empty disables HITL
-    HITL_TOOLS: str = "run_python"
+    HITL_TOOLS: str = "run_python,slack_post_message"
 
     # --- Observability ---
     # OTLP traces endpoint (e.g. self-hosted Phoenix http://localhost:6006/v1/traces);
@@ -123,6 +134,11 @@ class Settings(BaseSettings):
     # --- External tool integrations ---
     GITHUB_TOKEN: str = ""
     MICROSERVICE_TOOLS_CONFIG: str = ""  # path to a JSON config of local API tools
+    # Slack bot token (xoxb-...) for the hosted Slack MCP server; empty = off
+    SLACK_BOT_TOKEN: str = ""
+    # Adzuna job-search API credentials (free tier); both required to register
+    ADZUNA_APP_ID: str = ""
+    ADZUNA_APP_KEY: str = ""
 
     @property
     def is_dev(self) -> bool:

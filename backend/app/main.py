@@ -66,6 +66,18 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         register_google_tools()
     except Exception as exc:  # noqa: BLE001
         log.warning("startup.google_connectors_failed", error=str(exc))
+    try:
+        from app.tools_registry.jobs_tools import register_jobs_tools
+
+        register_jobs_tools()
+    except Exception as exc:  # noqa: BLE001
+        log.warning("startup.jobs_tools_failed", error=str(exc))
+    try:
+        from app.mcp_client.slack_client import register_slack_tools
+
+        await register_slack_tools()
+    except Exception as exc:  # noqa: BLE001
+        log.warning("startup.slack_tools_failed", error=str(exc))
     scheduler_task = None
     if settings.SCHEDULER_ENABLED:
         import asyncio
